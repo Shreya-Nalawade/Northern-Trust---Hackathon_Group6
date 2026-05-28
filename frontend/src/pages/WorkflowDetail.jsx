@@ -1,7 +1,6 @@
 import { useState, useCallback } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
-import { ArrowLeft, ExternalLink } from 'lucide-react';
-import TopBar from '../components/Layout/TopBar';
+import { ArrowLeft } from 'lucide-react';
 import WorkflowDAG from '../components/DAG/WorkflowDAG';
 import TaskInspector from '../components/TaskInspector/TaskInspector';
 import EventLog from '../components/EventLog/EventLog';
@@ -26,8 +25,7 @@ export function WorkflowDetail() {
 
   if (loading) {
     return (
-      <div className="page">
-        <TopBar title="Workflow Detail" />
+      <div className="page workflow-detail-page">
         <div className="page-loading">
           <div className="page-loading__spinner" />
           <span>Loading workflow…</span>
@@ -38,8 +36,7 @@ export function WorkflowDetail() {
 
   if (!workflow) {
     return (
-      <div className="page">
-        <TopBar title="Workflow Detail" />
+      <div className="page workflow-detail-page">
         <div className="page-empty">
           <h3>Workflow not found</h3>
           <button className="btn btn-primary" onClick={() => navigate('/')}>
@@ -51,11 +48,11 @@ export function WorkflowDetail() {
   }
 
   return (
-    <div className="page workflow-detail-page">
+    <div className="workflow-detail-page">
       {/* Header */}
       <div className="workflow-detail__header">
         <button className="btn btn-ghost btn-sm" onClick={() => navigate('/')}>
-          <ArrowLeft size={16} />
+          <ArrowLeft size={14} />
           Back
         </button>
         <div className="workflow-detail__info">
@@ -66,17 +63,11 @@ export function WorkflowDetail() {
             <StateBadge state={workflow.state} size="lg" />
           </div>
           <div className="workflow-detail__meta">
-            <span className="workflow-detail__id">
-              <code>{truncateId(workflow.id)}</code>
-            </span>
+            <code>{truncateId(workflow.id)}</code>
             {workflow.input_payload?.order_id && (
-              <span className="workflow-detail__order">
-                Order: {workflow.input_payload.order_id}
-              </span>
+              <span>Order: {workflow.input_payload.order_id}</span>
             )}
-            <span className="workflow-detail__elapsed">
-              Duration: {formatElapsed(workflow.started_at, workflow.completed_at)}
-            </span>
+            <span>{formatElapsed(workflow.started_at, workflow.completed_at)}</span>
           </div>
         </div>
         <ControlsPanel
@@ -86,17 +77,9 @@ export function WorkflowDetail() {
         />
       </div>
 
-      {/* Main Content */}
-      <div className={`workflow-detail__content ${selectedTask ? 'workflow-detail__content--with-inspector' : ''}`}>
-        {/* DAG Area */}
-        <div className="workflow-detail__dag">
-          <WorkflowDAG
-            tasks={workflow.tasks}
-            onNodeClick={handleNodeClick}
-          />
-        </div>
-
-        {/* Task Inspector (conditional) */}
+      {/* Main content: DAG center, panels on sides */}
+      <div className="workflow-detail__body">
+        {/* Task Inspector on left when open */}
         {selectedTask && (
           <TaskInspector
             task={selectedTask}
@@ -104,11 +87,19 @@ export function WorkflowDetail() {
             onRetry={refetch}
           />
         )}
-      </div>
 
-      {/* Event Log */}
-      <div className="workflow-detail__log">
-        <EventLog workflowId={workflow.id} />
+        {/* DAG in the center */}
+        <div className="workflow-detail__dag">
+          <WorkflowDAG
+            tasks={workflow.tasks}
+            onNodeClick={handleNodeClick}
+          />
+        </div>
+
+        {/* Event Log on the right */}
+        <div className="workflow-detail__log-panel">
+          <EventLog workflowId={workflow.id} />
+        </div>
       </div>
     </div>
   );

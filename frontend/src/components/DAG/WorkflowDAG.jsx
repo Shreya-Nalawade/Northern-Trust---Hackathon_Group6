@@ -2,23 +2,14 @@ import { useMemo, useCallback } from 'react';
 import {
   ReactFlow,
   Background,
-  Controls,
-  MiniMap,
   useNodesState,
   useEdgesState,
 } from '@xyflow/react';
 import '@xyflow/react/dist/style.css';
 import { TaskNode } from './TaskNode';
 import { layoutDag } from './dagLayout';
-import { getStateConfig } from '../../utils/helpers';
 
 const nodeTypes = { taskNode: TaskNode };
-
-const minimapStyle = {
-  backgroundColor: 'rgba(15, 12, 30, 0.8)',
-  border: '1px solid rgba(255,255,255,0.08)',
-  borderRadius: '8px',
-};
 
 export function WorkflowDAG({ tasks, onNodeClick }) {
   const { initialNodes, initialEdges } = useMemo(() => {
@@ -29,7 +20,6 @@ export function WorkflowDAG({ tasks, onNodeClick }) {
   const [nodes, setNodes, onNodesChange] = useNodesState(initialNodes);
   const [edges, setEdges, onEdgesChange] = useEdgesState(initialEdges);
 
-  // Update nodes/edges when tasks change (real-time updates)
   useMemo(() => {
     setNodes(initialNodes);
     setEdges(initialEdges);
@@ -42,11 +32,6 @@ export function WorkflowDAG({ tasks, onNodeClick }) {
     [onNodeClick]
   );
 
-  const minimapNodeColor = useCallback((node) => {
-    const config = getStateConfig(node.data?.state, true);
-    return config.color;
-  }, []);
-
   return (
     <div className="workflow-dag">
       <ReactFlow
@@ -57,31 +42,20 @@ export function WorkflowDAG({ tasks, onNodeClick }) {
         onNodeClick={handleNodeClick}
         nodeTypes={nodeTypes}
         fitView
-        fitViewOptions={{ padding: 0.3 }}
+        fitViewOptions={{ padding: 0.25 }}
         minZoom={0.3}
         maxZoom={2}
         defaultEdgeOptions={{
           type: 'smoothstep',
-          style: { strokeWidth: 2 },
+          style: { strokeWidth: 1.5 },
         }}
         proOptions={{ hideAttribution: true }}
       >
         <Background
-          color="rgba(255,255,255,0.03)"
-          gap={20}
+          color="var(--border-0)"
+          gap={24}
           size={1}
           variant="dots"
-        />
-        <Controls
-          className="dag-controls"
-          showInteractive={false}
-        />
-        <MiniMap
-          style={minimapStyle}
-          nodeColor={minimapNodeColor}
-          nodeStrokeWidth={2}
-          pannable
-          zoomable
         />
       </ReactFlow>
     </div>

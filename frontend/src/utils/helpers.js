@@ -47,49 +47,49 @@ export function truncateId(id) {
 
 // ─── State Color Mappings ──────────────────────────────────────
 export const WORKFLOW_STATES = {
-  RUNNING:   { label: 'Running',   color: '#3b82f6', bg: 'rgba(59,130,246,0.15)',  border: 'rgba(59,130,246,0.4)' },
-  PAUSED:    { label: 'Paused',    color: '#f59e0b', bg: 'rgba(245,158,11,0.15)',  border: 'rgba(245,158,11,0.4)' },
-  COMPLETED: { label: 'Completed', color: '#10b981', bg: 'rgba(16,185,129,0.15)',  border: 'rgba(16,185,129,0.4)' },
-  FAILED:    { label: 'Failed',    color: '#ef4444', bg: 'rgba(239,68,68,0.15)',   border: 'rgba(239,68,68,0.4)' },
-  CANCELLED: { label: 'Cancelled', color: '#6b7280', bg: 'rgba(107,114,128,0.15)', border: 'rgba(107,114,128,0.4)' },
+  RUNNING:   { label: 'Running',   color: '#0070f3', bg: 'rgba(0,112,243,0.1)',    border: 'rgba(0,112,243,0.25)' },
+  PAUSED:    { label: 'Paused',    color: '#f5a623', bg: 'rgba(245,166,35,0.1)',   border: 'rgba(245,166,35,0.25)' },
+  COMPLETED: { label: 'Completed', color: '#00a67e', bg: 'rgba(0,166,126,0.1)',    border: 'rgba(0,166,126,0.25)' },
+  FAILED:    { label: 'Failed',    color: '#e5484d', bg: 'rgba(229,72,77,0.1)',    border: 'rgba(229,72,77,0.25)' },
+  CANCELLED: { label: 'Cancelled', color: '#666',    bg: 'rgba(102,102,102,0.1)',  border: 'rgba(102,102,102,0.25)' },
 };
 
 export const TASK_STATES = {
-  PENDING:       { label: 'Pending',       color: '#64748b', bg: 'rgba(100,116,139,0.15)', border: 'rgba(100,116,139,0.4)' },
-  READY:         { label: 'Ready',         color: '#8b5cf6', bg: 'rgba(139,92,246,0.15)',  border: 'rgba(139,92,246,0.4)' },
-  DISPATCHED:    { label: 'Dispatched',    color: '#06b6d4', bg: 'rgba(6,182,212,0.15)',   border: 'rgba(6,182,212,0.4)' },
-  IN_PROGRESS:   { label: 'In Progress',   color: '#3b82f6', bg: 'rgba(59,130,246,0.15)',  border: 'rgba(59,130,246,0.4)' },
-  COMPLETED:     { label: 'Completed',     color: '#10b981', bg: 'rgba(16,185,129,0.15)',  border: 'rgba(16,185,129,0.4)' },
-  FAILED:        { label: 'Failed',        color: '#ef4444', bg: 'rgba(239,68,68,0.15)',   border: 'rgba(239,68,68,0.4)' },
-  RETRYING:      { label: 'Retrying',      color: '#f97316', bg: 'rgba(249,115,22,0.15)',  border: 'rgba(249,115,22,0.4)' },
-  SKIPPED:       { label: 'Skipped',       color: '#9ca3af', bg: 'rgba(156,163,175,0.15)', border: 'rgba(156,163,175,0.4)' },
-  WAITING_HUMAN: { label: 'Awaiting Approval', color: '#a855f7', bg: 'rgba(168,85,247,0.15)', border: 'rgba(168,85,247,0.4)' },
-  CANCELLED:     { label: 'Cancelled',     color: '#6b7280', bg: 'rgba(107,114,128,0.15)', border: 'rgba(107,114,128,0.4)' },
+  PENDING:       { label: 'Pending',       color: '#666',    bg: 'rgba(102,102,102,0.1)',  border: 'rgba(102,102,102,0.25)' },
+  READY:         { label: 'Ready',         color: '#7c3aed', bg: 'rgba(124,58,237,0.1)',   border: 'rgba(124,58,237,0.25)' },
+  DISPATCHED:    { label: 'Dispatched',    color: '#06b6d4', bg: 'rgba(6,182,212,0.1)',    border: 'rgba(6,182,212,0.25)' },
+  IN_PROGRESS:   { label: 'In Progress',   color: '#0070f3', bg: 'rgba(0,112,243,0.1)',    border: 'rgba(0,112,243,0.25)' },
+  COMPLETED:     { label: 'Completed',     color: '#00a67e', bg: 'rgba(0,166,126,0.1)',    border: 'rgba(0,166,126,0.25)' },
+  FAILED:        { label: 'Failed',        color: '#e5484d', bg: 'rgba(229,72,77,0.1)',    border: 'rgba(229,72,77,0.25)' },
+  RETRYING:      { label: 'Retrying',      color: '#f5a623', bg: 'rgba(245,166,35,0.1)',   border: 'rgba(245,166,35,0.25)' },
+  SKIPPED:       { label: 'Skipped',       color: '#555',    bg: 'rgba(85,85,85,0.1)',     border: 'rgba(85,85,85,0.25)' },
+  WAITING_HUMAN: { label: 'Awaiting Approval', color: '#7c3aed', bg: 'rgba(124,58,237,0.1)', border: 'rgba(124,58,237,0.25)' },
+  CANCELLED:     { label: 'Cancelled',     color: '#666',    bg: 'rgba(102,102,102,0.1)',  border: 'rgba(102,102,102,0.25)' },
 };
 
 export function getStateConfig(state, isTask = false) {
   const map = isTask ? TASK_STATES : WORKFLOW_STATES;
-  return map[state] || { label: state || 'Unknown', color: '#6b7280', bg: 'rgba(107,114,128,0.15)', border: 'rgba(107,114,128,0.4)' };
+  return map[state] || { label: state || 'Unknown', color: '#666', bg: 'rgba(102,102,102,0.1)', border: 'rgba(102,102,102,0.25)' };
 }
 
 // ─── Event Type Labels ─────────────────────────────────────────
 export const EVENT_TYPES = {
-  WORKFLOW_STARTED:   { label: 'Workflow Started',   color: '#3b82f6', icon: '🚀' },
-  WORKFLOW_COMPLETED: { label: 'Workflow Completed', color: '#10b981', icon: '✅' },
-  WORKFLOW_FAILED:    { label: 'Workflow Failed',    color: '#ef4444', icon: '❌' },
-  WORKFLOW_PAUSED:    { label: 'Workflow Paused',    color: '#f59e0b', icon: '⏸' },
-  WORKFLOW_RESUMED:   { label: 'Workflow Resumed',   color: '#3b82f6', icon: '▶️' },
-  WORKFLOW_CANCELLED: { label: 'Workflow Cancelled', color: '#6b7280', icon: '🚫' },
-  TASK_STARTED:       { label: 'Task Started',       color: '#06b6d4', icon: '⚡' },
-  TASK_COMPLETED:     { label: 'Task Completed',     color: '#10b981', icon: '✔️' },
-  TASK_FAILED:        { label: 'Task Failed',        color: '#ef4444', icon: '💥' },
-  TASK_RETRYING:      { label: 'Task Retrying',      color: '#f97316', icon: '🔄' },
-  TASK_SKIPPED:       { label: 'Task Skipped',       color: '#9ca3af', icon: '⏭' },
-  HUMAN_TASK_CREATED: { label: 'Approval Required',  color: '#a855f7', icon: '👤' },
-  HUMAN_TASK_APPROVED:{ label: 'Task Approved',      color: '#10b981', icon: '👍' },
-  HUMAN_TASK_REJECTED:{ label: 'Task Rejected',      color: '#ef4444', icon: '👎' },
+  WORKFLOW_STARTED:   { label: 'Started',    color: '#0070f3', icon: '→' },
+  WORKFLOW_COMPLETED: { label: 'Completed',  color: '#00a67e', icon: '✓' },
+  WORKFLOW_FAILED:    { label: 'Failed',     color: '#e5484d', icon: '✗' },
+  WORKFLOW_PAUSED:    { label: 'Paused',     color: '#f5a623', icon: '‖' },
+  WORKFLOW_RESUMED:   { label: 'Resumed',    color: '#0070f3', icon: '→' },
+  WORKFLOW_CANCELLED: { label: 'Cancelled',  color: '#666',    icon: '⊘' },
+  TASK_STARTED:       { label: 'Started',    color: '#06b6d4', icon: '→' },
+  TASK_COMPLETED:     { label: 'Completed',  color: '#00a67e', icon: '✓' },
+  TASK_FAILED:        { label: 'Failed',     color: '#e5484d', icon: '✗' },
+  TASK_RETRYING:      { label: 'Retrying',   color: '#f5a623', icon: '↻' },
+  TASK_SKIPPED:       { label: 'Skipped',    color: '#555',    icon: '—' },
+  HUMAN_TASK_CREATED: { label: 'Approval',   color: '#7c3aed', icon: '?' },
+  HUMAN_TASK_APPROVED:{ label: 'Approved',   color: '#00a67e', icon: '✓' },
+  HUMAN_TASK_REJECTED:{ label: 'Rejected',   color: '#e5484d', icon: '✗' },
 };
 
 export function getEventConfig(type) {
-  return EVENT_TYPES[type] || { label: type || 'Unknown', color: '#6b7280', icon: '📋' };
+  return EVENT_TYPES[type] || { label: type || 'Unknown', color: '#666', icon: '·' };
 }

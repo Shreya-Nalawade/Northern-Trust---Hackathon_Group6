@@ -29,16 +29,14 @@ function TaskNodeComponent({ data, selected }) {
         '--node-bg': stateConfig.bg,
       }}
     >
-      {/* State indicator bar */}
       <div
         className="task-node__state-bar"
         style={{ backgroundColor: stateConfig.color }}
       />
 
-      {/* Content */}
       <div className="task-node__body">
         <div className="task-node__header">
-          <Icon size={14} style={{ color: stateConfig.color, flexShrink: 0 }} />
+          <Icon size={13} style={{ color: stateConfig.color, flexShrink: 0 }} />
           <span className="task-node__name">{data.task_id || data.label}</span>
         </div>
 
@@ -68,9 +66,9 @@ function TaskNodeComponent({ data, selected }) {
         )}
       </div>
 
-      {/* Handles */}
-      <Handle type="target" position={Position.Left} className="task-node__handle" />
-      <Handle type="source" position={Position.Right} className="task-node__handle" />
+      {/* Vertical handles: top for incoming, bottom for outgoing */}
+      <Handle type="target" position={Position.Top} className="task-node__handle" />
+      <Handle type="source" position={Position.Bottom} className="task-node__handle" />
     </div>
   );
 }

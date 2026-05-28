@@ -5,11 +5,15 @@ import {
   UserCheck,
   Activity,
   Workflow,
+  Sun,
+  Moon,
 } from 'lucide-react';
 import socket from '../../api/socket';
+import { useTheme } from '../../hooks/useTheme';
 
 export function Sidebar() {
   const [connected, setConnected] = useState(socket.connected);
+  const { theme, toggle } = useTheme();
 
   useEffect(() => {
     const onConnect = () => setConnected(true);
@@ -31,10 +35,9 @@ export function Sidebar() {
 
   return (
     <aside className="sidebar">
-      {/* Logo */}
       <div className="sidebar__brand">
         <div className="sidebar__logo">
-          <Workflow size={24} />
+          <Workflow size={16} />
         </div>
         <div className="sidebar__brand-text">
           <span className="sidebar__brand-name">Orchestrator</span>
@@ -42,7 +45,6 @@ export function Sidebar() {
         </div>
       </div>
 
-      {/* Nav */}
       <nav className="sidebar__nav">
         {navItems.map(({ to, icon: Icon, label }) => (
           <NavLink
@@ -53,14 +55,17 @@ export function Sidebar() {
             }
             end={to === '/'}
           >
-            <Icon size={18} />
+            <Icon size={16} />
             <span>{label}</span>
           </NavLink>
         ))}
       </nav>
 
-      {/* Connection Status */}
       <div className="sidebar__footer">
+        <button className="sidebar__theme-toggle" onClick={toggle}>
+          {theme === 'dark' ? <Sun size={14} /> : <Moon size={14} />}
+          <span>{theme === 'dark' ? 'Light mode' : 'Dark mode'}</span>
+        </button>
         <div className={`sidebar__status ${connected ? 'sidebar__status--connected' : 'sidebar__status--disconnected'}`}>
           <Activity size={14} />
           <span>{connected ? 'Connected' : 'Disconnected'}</span>

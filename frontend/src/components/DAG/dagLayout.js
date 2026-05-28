@@ -1,22 +1,19 @@
-// ─── Dagre-based auto-layout for workflow DAG ─────────────────
-// Implements a simple layered layout without external dagre dependency
-// by using a topological sort + rank assignment approach.
+// ─── Vertical DAG layout (top → bottom) ───────────────────────
+// Topological sort + rank-based positioning, vertical orientation.
 
-const NODE_WIDTH = 220;
-const NODE_HEIGHT = 80;
-const HORIZONTAL_GAP = 80;
-const VERTICAL_GAP = 50;
+const NODE_WIDTH = 180;
+const NODE_HEIGHT = 76;
+const HORIZONTAL_GAP = 40;
+const VERTICAL_GAP = 60;
 
 export function layoutDag(tasks) {
   if (!tasks || tasks.length === 0) return { nodes: [], edges: [] };
 
-  // Build adjacency map
   const taskMap = {};
   tasks.forEach((t) => {
     taskMap[t.task_id] = t;
   });
 
-  // Compute ranks using BFS from roots
   const inDegree = {};
   const children = {};
   tasks.forEach((t) => {
@@ -34,11 +31,10 @@ export function layoutDag(tasks) {
     });
   });
 
-  // Filter out special trigger-based tasks from main flow if they have no normal deps
   const triggerTasks = tasks.filter((t) => t.trigger && (!t.depends_on || t.depends_on.length === 0));
   const mainTasks = tasks.filter((t) => !t.trigger || (t.depends_on && t.depends_on.length > 0));
 
-  // Topological sort with ranks
+  // Topological sort with ranks (rank = row in vertical layout)
   const ranks = {};
   const queue = [];
 
@@ -61,7 +57,6 @@ export function layoutDag(tasks) {
     });
   }
 
-  // Group by rank
   const rankGroups = {};
   let maxRank = 0;
 
@@ -71,7 +66,7 @@ export function layoutDag(tasks) {
     maxRank = Math.max(maxRank, rank);
   });
 
-  // Place trigger tasks at a special rank
+  // Place trigger tasks below the main flow
   triggerTasks.forEach((t) => {
     const triggerRank = maxRank + 1;
     ranks[t.task_id] = triggerRank;
@@ -79,18 +74,18 @@ export function layoutDag(tasks) {
     rankGroups[triggerRank].push(t.task_id);
   });
 
-  // Assign positions
+  // Assign positions — vertical: rank controls Y, index controls X
   const nodes = [];
   const positions = {};
 
   Object.entries(rankGroups).forEach(([rank, taskIds]) => {
     const r = parseInt(rank);
-    const totalHeight = taskIds.length * NODE_HEIGHT + (taskIds.length - 1) * VERTICAL_GAP;
-    const startY = -totalHeight / 2;
+    const totalWidth = taskIds.length * NODE_WIDTH + (taskIds.length - 1) * HORIZONTAL_GAP;
+    const startX = -totalWidth / 2;
 
     taskIds.forEach((taskId, index) => {
-      const x = r * (NODE_WIDTH + HORIZONTAL_GAP);
-      const y = startY + index * (NODE_HEIGHT + VERTICAL_GAP);
+      const x = startX + index * (NODE_WIDTH + HORIZONTAL_GAP);
+      const y = r * (NODE_HEIGHT + VERTICAL_GAP);
 
       positions[taskId] = { x, y };
 
@@ -107,7 +102,7 @@ export function layoutDag(tasks) {
     });
   });
 
-  // Create edges
+  // Create edges — vertical orientation uses Top/Bottom handles
   const edges = [];
   tasks.forEach((task) => {
     const deps = task.depends_on || [];
@@ -124,25 +119,25 @@ export function layoutDag(tasks) {
           animated: taskMap[dep]?.state === 'IN_PROGRESS' || taskMap[dep]?.state === 'DISPATCHED',
           style: {
             stroke: isFailed
-              ? '#ef4444'
+              ? '#e5484d'
               : isCompleted
-              ? '#10b981'
-              : '#475569',
-            strokeWidth: 2,
+              ? '#00a67e'
+              : 'var(--border-2)',
+            strokeWidth: 1.5,
           },
           markerEnd: {
             type: 'arrowclosed',
             color: isFailed
-              ? '#ef4444'
+              ? '#e5484d'
               : isCompleted
-              ? '#10b981'
-              : '#475569',
+              ? '#00a67e'
+              : 'var(--border-2)',
           },
         });
       }
     });
 
-    // Trigger edges (e.g., on_failure_of)
+    // Trigger edges
     if (task.trigger) {
       const match = task.trigger.match(/on_failure_of:(.+)/);
       if (match && positions[match[1]] && positions[task.task_id]) {
@@ -153,17 +148,17 @@ export function layoutDag(tasks) {
           type: 'smoothstep',
           animated: false,
           label: 'on failure',
-          labelStyle: { fill: '#ef4444', fontSize: 10, fontWeight: 600 },
-          labelBgStyle: { fill: '#1e1b2e', fillOpacity: 0.9 },
+          labelStyle: { fill: '#e5484d', fontSize: 10, fontWeight: 500 },
+          labelBgStyle: { fill: 'var(--bg-0)', fillOpacity: 0.95 },
           labelBgPadding: [4, 2],
           style: {
-            stroke: '#ef4444',
-            strokeWidth: 2,
+            stroke: '#e5484d',
+            strokeWidth: 1.5,
             strokeDasharray: '6 3',
           },
           markerEnd: {
             type: 'arrowclosed',
-            color: '#ef4444',
+            color: '#e5484d',
           },
         });
       }
