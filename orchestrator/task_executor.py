@@ -39,8 +39,19 @@ async def execute_task_mock(task_type: str, task_name: str) -> dict:
     Fallback mock executor for testing orchestrator logic 
     without running the full microservice cluster.
     """
-    await asyncio.sleep(1) # Simulate network latency
+    await asyncio.sleep(1)  # Simulate network latency
+
+    from datetime import datetime, timezone
+
+    task_id = f"{task_name}_id_{task_type[:3].lower()}"
+
     return {
+        "task_id": task_id,
         "status": "SUCCESS",
-        "logs": f"Successfully simulated {task_type} for {task_name}"
+        "result": {
+            "tracking_id": f"WH-{abs(hash(task_name)) % 9000 + 1000}",
+            "reserved_at": datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+        },
+        "logs": f"Successfully simulated {task_type} for {task_name}",
+        "error": None
     }

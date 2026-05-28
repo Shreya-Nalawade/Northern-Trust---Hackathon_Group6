@@ -4,3 +4,5 @@ uvicorn
 httpx
 pyyaml
 pydantic
+sqlalchemy
+psycopg2-binary
