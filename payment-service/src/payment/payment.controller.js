@@ -43,7 +43,7 @@ export class PaymentController {
         });
       }
 
-      const isValid = paymentService.verifyPayment(
+      const isValid = await paymentService.verifyPayment(
         razorpay_order_id,
         razorpay_payment_id,
         razorpay_signature

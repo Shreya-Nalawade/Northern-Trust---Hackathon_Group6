@@ -1,9 +1,10 @@
 import crypto from 'crypto';
 import { razorpayInstance, razorpayConfig } from '../config/razorpay.config.js';
+import { query } from '../config/database.js';
 
 export class PaymentService {
   /**
-   * Creates a new Razorpay Order.
+   * Creates a new Razorpay Order and saves it to the database.
    * @param {number} amount - Amount in INR (e.g. 10000)
    * @returns {Promise<object>} The created order details
    */
@@ -23,9 +24,24 @@ export class PaymentService {
 
     try {
       const order = await razorpayInstance.orders.create(options);
+      
+      const orderAmountINR = order.amount / 100;
+
+      // Store the initial order payment record in PostgreSQL
+      try {
+        await query(
+          `INSERT INTO payments (order_id, amount, payment_status, payment_method) 
+           VALUES ($1, $2, $3, $4)`,
+          [order.id, orderAmountINR, 'PENDING', 'razorpay']
+        );
+        console.log(`Inserted pending payment record for order_id: ${order.id} into database.`);
+      } catch (dbError) {
+        console.error('Failed to save order payment record to database:', dbError.message);
+      }
+
       return {
         id: order.id,
-        amount: order.amount / 100, // back to INR
+        amount: orderAmountINR, // back to INR
         currency: order.currency,
         receipt: order.receipt,
         status: order.status,
@@ -42,13 +58,13 @@ export class PaymentService {
   }
 
   /**
-   * Verifies the Razorpay payment signature.
+   * Verifies the Razorpay payment signature and updates the status in the database.
    * @param {string} orderId - The Razorpay Order ID
    * @param {string} paymentId - The Razorpay Payment ID
    * @param {string} signature - The Razorpay Signature
-   * @returns {boolean} True if signature is valid, false otherwise
+   * @returns {Promise<boolean>} True if signature is valid, false otherwise
    */
-  verifyPayment(orderId, paymentId, signature) {
+  async verifyPayment(orderId, paymentId, signature) {
     if (!orderId || !paymentId || !signature) {
       throw new Error('Missing signature verification parameters (orderId, paymentId, signature).');
     }
@@ -64,7 +80,32 @@ export class PaymentService {
       .update(body.toString())
       .digest('hex');
 
-    return expectedSignature === signature;
+    const isValid = expectedSignature === signature;
+
+    // Update database status of the payment record
+    try {
+      if (isValid) {
+        await query(
+          `UPDATE payments 
+           SET payment_transaction_id = $1, payment_status = $2, payment_method = $3
+           WHERE order_id = $4`,
+          [paymentId, 'COMPLETED', 'razorpay', orderId]
+        );
+        console.log(`Updated payment status to COMPLETED for order_id: ${orderId} in database.`);
+      } else {
+        await query(
+          `UPDATE payments 
+           SET payment_status = $1, failure_reason = $2
+           WHERE order_id = $3`,
+          ['FAILED', 'Signature verification failed', orderId]
+        );
+        console.log(`Updated payment status to FAILED for order_id: ${orderId} in database.`);
+      }
+    } catch (dbError) {
+      console.error('Failed to update payment status in database:', dbError.message);
+    }
+
+    return isValid;
   }
 }
 export const paymentService = new PaymentService();
