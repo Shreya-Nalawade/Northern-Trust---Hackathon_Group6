@@ -1,6 +1,7 @@
+require('dotenv').config();
 const fs = require('fs');
 const path = require('path');
-const db = require('../common/db');
+const db = require('./common/db');
 
 async function run(){
   try{
