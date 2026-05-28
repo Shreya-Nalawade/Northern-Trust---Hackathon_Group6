@@ -1,5 +1,5 @@
 redis
-pymongo
+psycopg2-binary
 httpx
 pydantic
 
