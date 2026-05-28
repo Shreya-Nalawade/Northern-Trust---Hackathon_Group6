@@ -1,7 +1,7 @@
 # E-commerce Orchestrator Base
 
 ## Folder Structure
-- `orchestrator/`: The core DAG engine and execution runner (Your Part).
+- `orchestrator/`: The core DAG engine and execution runner.
 - `workflows/`: YAML definitions for complex order processes.
 - `services/`: Skeletons for independent microservices (Payment, Inventory, Notifications).
 - `state_manager/`: Logic for persisting workflow and task states.
