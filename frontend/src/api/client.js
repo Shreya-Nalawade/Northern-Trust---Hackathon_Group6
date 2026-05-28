@@ -67,6 +67,10 @@ export async function retryTask(id) {
 
 // ─── Human Task Endpoints ──────────────────────────────────────
 
+export async function listHumanTasks() {
+  return request('/human-tasks');
+}
+
 export async function approveHumanTask(id, decidedBy) {
   return request(`/human-tasks/${id}/approve`, {
     method: 'POST',

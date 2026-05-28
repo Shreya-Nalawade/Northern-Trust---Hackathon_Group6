@@ -19,12 +19,12 @@ tasks:
   check-inventory:
     type: "http"
     service: "inventory-service"
-    depends_on: ["process-payment"]
+    depends_on: ["manual-approval"]
 
   reserve-stock:
     type: "http"
     service: "inventory-service"
-    depends_on: ["process-payment"]
+    depends_on: ["manual-approval"]
 
   ship-order:
     type: "http"

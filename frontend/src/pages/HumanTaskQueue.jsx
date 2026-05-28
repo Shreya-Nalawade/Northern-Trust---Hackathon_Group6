@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import {
   UserCheck,
   DollarSign,
@@ -10,18 +10,42 @@ import {
 } from 'lucide-react';
 import TopBar from '../components/Layout/TopBar';
 import Modal from '../components/shared/Modal';
-import { approveHumanTask, rejectHumanTask } from '../api/client';
+import { listHumanTasks, approveHumanTask, rejectHumanTask } from '../api/client';
 import { MOCK_HUMAN_TASKS } from '../utils/mockData';
 import { truncateId } from '../utils/helpers';
 import { format } from 'date-fns';
 
+const POLL_INTERVAL = 3000;
+
 export function HumanTaskQueue() {
-  const [tasks, setTasks] = useState(MOCK_HUMAN_TASKS);
+  const [tasks, setTasks] = useState([]);
   const [rejectModal, setRejectModal] = useState(null);
   const [approveModal, setApproveModal] = useState(null);
   const [rejectReason, setRejectReason] = useState('');
   const [decidedBy, setDecidedBy] = useState('');
   const [actionLoading, setActionLoading] = useState(null);
+  const pollRef = useRef(null);
+
+  const fetchTasks = useCallback(async () => {
+    try {
+      const data = await listHumanTasks();
+      setTasks(Array.isArray(data) ? data : []);
+    } catch (err) {
+      console.warn('[HumanTaskQueue] API unavailable, using mock data:', err.message);
+      setTasks(MOCK_HUMAN_TASKS);
+    }
+  }, []);
+
+  useEffect(() => {
+    fetchTasks();
+  }, [fetchTasks]);
+
+  // Poll for new human tasks
+  useEffect(() => {
+    pollRef.current = setInterval(fetchTasks, POLL_INTERVAL);
+    return () => clearInterval(pollRef.current);
+  }, [fetchTasks]);
+
 
   const handleApprove = async (task) => {
     setActionLoading(task.id);
