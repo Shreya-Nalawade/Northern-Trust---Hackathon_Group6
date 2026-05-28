@@ -1,15 +1,18 @@
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import { listWorkflows } from '../api/client';
 import { MOCK_WORKFLOWS } from '../utils/mockData';
+
+const POLL_INTERVAL = 3000; // Refresh list every 3 seconds
 
 export function useWorkflowList(params = {}) {
   const [workflows, setWorkflows] = useState([]);
   const [total, setTotal] = useState(0);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
+  const pollRef = useRef(null);
 
-  const fetchWorkflows = useCallback(async () => {
-    setLoading(true);
+  const fetchWorkflows = useCallback(async (isPolling = false) => {
+    if (!isPolling) setLoading(true);
     setError(null);
     try {
       const data = await listWorkflows(params);
@@ -29,11 +32,25 @@ export function useWorkflowList(params = {}) {
     }
   }, [params.state, params.limit]);
 
+  // Initial fetch
   useEffect(() => {
     fetchWorkflows();
   }, [fetchWorkflows]);
 
-  return { workflows, total, loading, error, refetch: fetchWorkflows };
+  // Poll for updates so the list stays fresh
+  useEffect(() => {
+    pollRef.current = setInterval(() => {
+      fetchWorkflows(true);
+    }, POLL_INTERVAL);
+
+    return () => {
+      if (pollRef.current) {
+        clearInterval(pollRef.current);
+      }
+    };
+  }, [fetchWorkflows]);
+
+  return { workflows, total, loading, error, refetch: () => fetchWorkflows(false) };
 }
 
 export default useWorkflowList;
