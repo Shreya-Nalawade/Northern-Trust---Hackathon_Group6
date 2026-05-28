@@ -1,0 +1,136 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Premium Payment Portal | E-Commerce Orchestrator</title>
+  <!-- Google Fonts: Outfit -->
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+  <!-- Stylesheet -->
+  <link rel="stylesheet" href="styles.css">
+  <!-- Razorpay Checkout SDK -->
+  <script src="https://checkout.razorpay.com/v1/checkout.js"></script>
+</head>
+<body>
+  <!-- Decorative background elements -->
+  <div class="blob blob-1"></div>
+  <div class="blob blob-2"></div>
+  <div class="blob blob-3"></div>
+
+  <div class="checkout-container">
+    <!-- Main Glassmorphism Card -->
+    <main class="payment-card" id="payment-card-main">
+      <div class="card-header">
+        <div class="merchant-badge">
+          <span class="pulse-dot"></span>
+          SECURE CHECKOUT GATEWAY
+        </div>
+        <h1 class="merchant-title">E-Commerce Orchestrator</h1>
+      </div>
+
+      <hr class="divider">
+
+      <!-- Order Details -->
+      <section class="order-details">
+        <div class="detail-row">
+          <span class="label">Product description</span>
+          <span class="value highlighted">Standard Order Bundle</span>
+        </div>
+        <div class="detail-row">
+          <span class="label">Reference ID</span>
+          <span class="value" id="ref-order-id">ORD-TBD</span>
+        </div>
+        <div class="detail-row">
+          <span class="label">Currency</span>
+          <span class="value">INR (₹)</span>
+        </div>
+        
+        <div class="price-container">
+          <span class="price-label">Amount Payable</span>
+          <div class="price-value">₹10,000.00</div>
+        </div>
+      </section>
+
+      <!-- Pay Button -->
+      <button class="pay-btn" id="pay-btn-initiate">
+        <span class="btn-text">Initiate Payment (₹10,000)</span>
+        <span class="spinner" id="pay-btn-spinner" style="display: none;"></span>
+      </button>
+
+      <!-- Security Stamp -->
+      <div class="security-info">
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor" class="lock-icon">
+          <path fill-rule="evenodd" d="M12 1.5a5.25 5.25 0 0 0-5.25 5.25v3a3 3 0 0 0-3 3v6.75a3 3 0 0 0 3 3h10.5a3 3 0 0 0 3-3v-6.75a3 3 0 0 0-3-3v-3c0-2.9-2.35-5.25-5.25-5.25Zm3.75 8.25v-3a3.75 3.75 0 1 0-7.5 0v3h7.5Z" clip-rule="evenodd" />
+        </svg>
+        <span>Secured by Razorpay. 256-bit encryption.</span>
+      </div>
+    </main>
+
+    <!-- Side Control Panel / Real-time Status -->
+    <aside class="status-panel">
+      <h2 class="panel-title">Transaction Pipeline</h2>
+      
+      <!-- Stepper Progress UI -->
+      <div class="stepper">
+        <div class="step-item active" id="step-1">
+          <div class="step-marker">1</div>
+          <div class="step-label">Order Created</div>
+        </div>
+        <div class="step-item" id="step-2">
+          <div class="step-marker">2</div>
+          <div class="step-label">Awaiting Payment</div>
+        </div>
+        <div class="step-item" id="step-3">
+          <div class="step-marker">3</div>
+          <div class="step-label">Signature Verification</div>
+        </div>
+        <div class="step-item" id="step-4">
+          <div class="step-marker">4</div>
+          <div class="step-label">Settled</div>
+        </div>
+      </div>
+
+      <!-- Real-time Activity Log Terminal -->
+      <div class="terminal-container">
+        <div class="terminal-header">
+          <div class="terminal-buttons">
+            <span class="term-btn term-close"></span>
+            <span class="term-btn term-min"></span>
+            <span class="term-btn term-max"></span>
+          </div>
+          <span class="terminal-title">live_logs.sh</span>
+        </div>
+        <div class="terminal-body" id="log-terminal">
+          <div class="log-line text-muted">[SYSTEM] Welcome. Awaiting user interaction...</div>
+        </div>
+      </div>
+
+      <!-- Details Panel (Appears after completion) -->
+      <div class="receipt-box" id="receipt-card" style="display: none;">
+        <h3>Transaction Receipt</h3>
+        <div class="receipt-item">
+          <span>Payment ID:</span>
+          <code id="receipt-pay-id">pay_xxxxxx</code>
+        </div>
+        <div class="receipt-item">
+          <span>Order ID:</span>
+          <code id="receipt-order-id">order_xxxxxx</code>
+        </div>
+        <div class="receipt-item">
+          <span>Signature:</span>
+          <code id="receipt-signature">sig_xxxxxx</code>
+        </div>
+      </div>
+    </aside>
+  </div>
+
+  <footer class="portal-footer">
+    <p>E-Commerce Workflow Orchestration Demo Portal • NTAC:3NS-20</p>
+  </footer>
+
+  <!-- Scripts -->
+  <script src="app.js"></script>
+</body>
+</html>
