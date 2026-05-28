@@ -8,7 +8,7 @@ export class PaymentService {
    * @param {number} amount - Amount in INR (e.g. 10000)
    * @returns {Promise<object>} The created order details
    */
-  async createOrder(amount) {
+  async createOrder(amount, workflow_execution_id = null) {
     if (!amount || isNaN(amount) || amount <= 0) {
       throw new Error('Invalid amount provided. Amount must be a positive number.');
     }
@@ -30,9 +30,9 @@ export class PaymentService {
       // Store the initial order payment record in PostgreSQL
       try {
         await query(
-          `INSERT INTO payments (order_id, amount, payment_status, payment_method) 
-           VALUES ($1, $2, $3, $4)`,
-          [order.id, orderAmountINR, 'PENDING', 'razorpay']
+          `INSERT INTO payments (workflow_execution_id, order_id, amount, payment_status, payment_method) 
+           VALUES ($1, $2, $3, $4, $5)`,
+          [workflow_execution_id, order.id, orderAmountINR, 'PENDING', 'razorpay']
         );
         console.log(`Inserted pending payment record for order_id: ${order.id} into database.`);
       } catch (dbError) {

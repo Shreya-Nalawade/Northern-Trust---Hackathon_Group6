@@ -47,6 +47,7 @@ def process_inventory_task(task_data: dict):
     task_id = task_data.get("task_id")
     payload = task_data.get("payload", {})
     order_id = payload.get("order_id")
+    workflow_execution_id = payload.get("workflow_execution_id")
     items = payload.get("items", [])
     
     logger.info(f"📦 Processing task {task_id} for Order: {order_id}")
@@ -101,10 +102,10 @@ def process_inventory_task(task_data: dict):
                 # Insert reservation record
                 cursor.execute(
                     """
-                    INSERT INTO inventory_reservations (order_id, sku, quantity, reservation_status, created_at)
-                    VALUES (%s, %s, %s, %s, %s);
+                    INSERT INTO inventory_reservations (workflow_execution_id, order_id, sku, quantity, reservation_status, created_at)
+                    VALUES (%s, %s, %s, %s, %s, %s);
                     """,
-                    (order_id, sku, qty, 'RESERVED', datetime.utcnow())
+                    (workflow_execution_id, order_id, sku, qty, 'RESERVED', datetime.utcnow())
                 )
                 processed_skus.append(sku)
                 
@@ -128,10 +129,10 @@ def process_inventory_task(task_data: dict):
             for item in items:
                 cursor.execute(
                     """
-                    INSERT INTO inventory_reservations (order_id, sku, quantity, reservation_status, created_at)
-                    VALUES (%s, %s, %s, %s, %s);
+                    INSERT INTO inventory_reservations (workflow_execution_id, order_id, sku, quantity, reservation_status, created_at)
+                    VALUES (%s, %s, %s, %s, %s, %s);
                     """,
-                    (order_id, item["sku"], item["qty"], 'FAILED', datetime.utcnow())
+                    (workflow_execution_id, order_id, item["sku"], item["qty"], 'FAILED', datetime.utcnow())
                 )
                 
             conn.commit()

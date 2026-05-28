@@ -82,13 +82,18 @@ async function startPaymentFlow() {
     // 2. Create order on the backend
     updateStepUI(1, 'active');
     logToTerminal('POST /api/v1/payment/order - Sending request to Payment Microservice...', 'info');
-    
+    const urlParams = new URLSearchParams(window.location.search);
+    const workflowExecutionId = urlParams.get('workflow_execution_id');
+
     const orderResponse = await fetch(`${API_BASE_URL}/order`, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
       },
-      body: JSON.stringify({ amount: 10000 }),
+      body: JSON.stringify({ 
+        amount: 10000,
+        workflow_execution_id: workflowExecutionId
+      }),
     });
 
     const orderData = await orderResponse.json();

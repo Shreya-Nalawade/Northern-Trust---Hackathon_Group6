@@ -27,7 +27,9 @@ def seed_db():
         mock_items = [
             ("NIKE-AIR-01", "Nike Air Shoes", 50, 0),
             ("SKU-PROD-200", "Mechanical Keyboard", 1, 0),
-            ("SKU-PROD-300", "USB-C Cable", 0, 0)
+            ("SKU-PROD-300", "USB-C Cable", 0, 0),
+            ("SKU-101", "Test Product 101", 100, 0),
+            ("SKU-102", "Test Product 102", 100, 0)
         ]
         
         # Insert items
