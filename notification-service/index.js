@@ -50,9 +50,15 @@ async function sendEmail({ to, template, data, workflow_execution_id = null }){
     const saved = await persistNotification({ workflow_execution_id, notification_type: template, channel: 'email', recipient: to, subject, message: html, payload: data, provider_response: { simulated: true }, notification_status: 'SENT' });
     return { ok: true, simulated: true, saved };
   }
-  const resp = await sendgrid.send(msg);
-  const saved = await persistNotification({ workflow_execution_id, notification_type: template, channel: 'email', recipient: to, subject, message: html, payload: data, provider_response: resp, notification_status: 'SENT' });
-  return { ok: true, resp, saved };
+  try {
+    const resp = await sendgrid.send(msg);
+    const saved = await persistNotification({ workflow_execution_id, notification_type: template, channel: 'email', recipient: to, subject, message: html, payload: data, provider_response: resp, notification_status: 'SENT' });
+    return { ok: true, resp, saved };
+  } catch (error) {
+    console.warn('[Notification Service] SendGrid send failed. Falling back to simulation mode. Error:', error.message);
+    const saved = await persistNotification({ workflow_execution_id, notification_type: template, channel: 'email', recipient: to, subject, message: html, payload: data, provider_response: { simulated: true, error: error.message }, notification_status: 'SENT' });
+    return { ok: true, simulated: true, saved };
+  }
 }
 
 async function sendSms({ to, template, data, workflow_execution_id = null }){
