@@ -1,18 +1,43 @@
-name: "ecommerce_order_process"
+name: "order-fulfillment"
 tasks:
-  reserve_inventory:
-    type: "inventory"
+  validate-order:
+    type: "http"
+    service: "order-service"
     depends_on: []
-  validate_order:
-    type: "validation"
-    depends_on: []
-  charge_payment:
-    type: "payment"
-    depends_on: ["reserve_inventory", "validate_order"]
-  create_shipping:
-    type: "shipping"
-    depends_on: ["charge_payment"]
-  send_notification:
-    type: "notification"
-    depends_on: ["create_shipping"]
 
+  process-payment:
+    type: "http"
+    service: "payment-service"
+    depends_on: ["validate-order"]
+
+  manual-approval:
+    type: "human"
+    assignee: "ops-team"
+    condition: "total_value > 500"
+    depends_on: ["process-payment"]
+
+  check-inventory:
+    type: "http"
+    service: "inventory-service"
+    depends_on: ["manual-approval"]
+
+  reserve-stock:
+    type: "http"
+    service: "inventory-service"
+    depends_on: ["manual-approval"]
+
+  ship-order:
+    type: "http"
+    service: "shipping-service"
+    depends_on: ["check-inventory", "reserve-stock"]
+
+  send-confirmation:
+    type: "http"
+    service: "notification-service"
+    depends_on: ["ship-order"]
+
+  cancel-order:
+    type: "http"
+    service: "order-service"
+    depends_on: []
+    trigger: "on_failure_of:process-payment"

@@ -1,6 +1,7 @@
 import httpx
 import logging
 import asyncio
+from typing import Optional
 
 logger = logging.getLogger(__name__)
 
@@ -10,7 +11,7 @@ async def execute_task_remote(service_name: str, task_name: str, payload: dict) 
     In the microservices architecture, each service (payment, inventory, etc.)
     exposes an endpoint to handle task execution.
     """
-    url = f"http://{service_name}-service:8000/execute"
+    url = f"http://{service_name}:8000/execute"
     
     async with httpx.AsyncClient() as client:
         try:
@@ -34,24 +35,50 @@ async def execute_task_remote(service_name: str, task_name: str, payload: dict) 
                 "error": f"Connection error: {str(e)}"
             }
 
-async def execute_task_mock(task_type: str, task_name: str) -> dict:
+async def execute_task_mock(service_name: str, task_name: str, payload: Optional[dict] = None) -> dict:
     """
-    Fallback mock executor for testing orchestrator logic 
+    Mock executor for testing orchestrator logic 
     without running the full microservice cluster.
+    Simulates realistic delays and results per service type.
     """
-    await asyncio.sleep(1)  # Simulate network latency
-
-    from datetime import datetime, timezone
-
-    task_id = f"{task_name}_id_{task_type[:3].lower()}"
-
-    return {
-        "task_id": task_id,
-        "status": "SUCCESS",
-        "result": {
-            "tracking_id": f"WH-{abs(hash(task_name)) % 9000 + 1000}",
-            "reserved_at": datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
-        },
-        "logs": f"Successfully simulated {task_type} for {task_name}",
-        "error": None
+    # Simulate varying latencies per service
+    delays = {
+        "order-service": 1.0,
+        "payment-service": 2.0,
+        "inventory-service": 1.5,
+        "shipping-service": 2.5,
+        "notification-service": 0.8,
     }
+    delay = delays.get(service_name, 1.0)
+    await asyncio.sleep(delay)
+    
+    # Simulate realistic results per task
+    results = {
+        "validate-order": {"valid": True, "message": "Order validated successfully"},
+        "process-payment": {"transaction_id": f"TXN-{id(task_name) % 9999:04d}", "status": "charged"},
+        "check-inventory": {"available": True, "warehouse": "WH-EAST"},
+        "reserve-stock": {"reserved": True, "reservation_id": f"RSV-{id(task_name) % 9999:04d}"},
+        "ship-order": {"tracking_number": f"TRACK-{id(task_name) % 99999:05d}", "carrier": "FastShip"},
+        "send-confirmation": {"email_sent": True, "channel": "email"},
+        "cancel-order": {"cancelled": True},
+    }
+    
+    return {
+        "status": "SUCCESS",
+        "result": results.get(task_name, {"completed": True}),
+    }
+
+# Toggle: set to True to attempt real HTTP calls first, falling back to mock
+USE_REAL_SERVICES = False
+
+async def execute_task(service_name: str, task_name: str, payload: Optional[dict] = None) -> dict:
+    """
+    Unified task executor. Tries real services if enabled, otherwise uses mock.
+    """
+    if USE_REAL_SERVICES:
+        result = await execute_task_remote(service_name, task_name, payload or {})
+        if result.get("status") != "FAILED" or "Connection error" not in result.get("error", ""):
+            return result
+        logger.warning(f"Real service unavailable for {service_name}, falling back to mock")
+    
+    return await execute_task_mock(service_name, task_name, payload)
