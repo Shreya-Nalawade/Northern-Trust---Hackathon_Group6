@@ -1212,6 +1212,46 @@ body {
 }
 .btn-ghost:hover:not(:disabled) { background: var(--bg-3); color: var(--text-0); }
 
+.btn-pay {
+  background: linear-gradient(135deg, #1a7f47, #166534);
+  color: #fff;
+  border: none;
+  box-shadow: 0 2px 8px rgba(26,127,71,0.35);
+  font-size: 0.92rem;
+  padding: 9px 14px;
+  transition: all 0.2s;
+}
+.btn-pay:hover:not(:disabled) {
+  background: linear-gradient(135deg, #16a34a, #15803d);
+  box-shadow: 0 4px 16px rgba(26,127,71,0.5);
+  transform: translateY(-1px);
+}
+.btn-pay:active:not(:disabled) { transform: translateY(0); }
+
+.task-inspector__pay-success {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  background: var(--green-subtle);
+  border: 1px solid var(--green-border);
+  border-radius: var(--radius);
+  padding: 10px 12px;
+  color: var(--green);
+  font-size: 0.85rem;
+  font-weight: 500;
+}
+
+.task-inspector__pay-hint {
+  margin-top: 6px;
+  font-size: 0.77rem;
+  color: var(--text-2);
+  text-align: center;
+}
+.task-inspector__pay-hint code {
+  font-family: var(--font-mono);
+  color: var(--text-1);
+}
+
 /* ─── Animations ─────────────────────────────────────────────── */
 @keyframes spin { to { transform: rotate(360deg); } }
 @keyframes bar-pulse {

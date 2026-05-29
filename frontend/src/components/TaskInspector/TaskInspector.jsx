@@ -1,12 +1,26 @@
-import { X, RotateCcw, Clock, AlertTriangle, CheckCircle2, Globe, User } from 'lucide-react';
+import { X, RotateCcw, Clock, AlertTriangle, CreditCard, Globe, User } from 'lucide-react';
 import StateBadge from '../shared/StateBadge';
 import JsonViewer from '../shared/JsonViewer';
 import { formatElapsed } from '../../utils/helpers';
 import { retryTask } from '../../api/client';
-import { useState } from 'react';
+import { useState, useCallback } from 'react';
+
+// ─── Razorpay helper ─────────────────────────────────────────────
+function loadRazorpayScript() {
+  return new Promise((resolve) => {
+    if (window.Razorpay) return resolve(true);
+    const script = document.createElement('script');
+    script.src = 'https://checkout.razorpay.com/v1/checkout.js';
+    script.onload = () => resolve(true);
+    script.onerror = () => resolve(false);
+    document.body.appendChild(script);
+  });
+}
 
 export function TaskInspector({ task, onClose, onRetry }) {
   const [retrying, setRetrying] = useState(false);
+  const [payLoading, setPayLoading] = useState(false);
+  const [payDone, setPayDone] = useState(false);
 
   if (!task) return null;
 
@@ -21,6 +35,44 @@ export function TaskInspector({ task, onClose, onRetry }) {
       setRetrying(false);
     }
   };
+
+  // ── Razorpay checkout ────────────────────────────────────────────
+  const rzpResult = task.result_payload;
+  const isPaymentTask = task.task_id === 'process-payment';
+  const rzpOrderId = rzpResult?.id?.startsWith?.('order_') ? rzpResult.id : null;
+  const rzpKeyId   = rzpResult?.keyId;
+  const rzpAmount  = rzpResult?.amount;  // already in paise from Razorpay
+
+  const handlePayNow = useCallback(async () => {
+    setPayLoading(true);
+    const ok = await loadRazorpayScript();
+    if (!ok) {
+      alert('Failed to load Razorpay. Please check your internet connection.');
+      setPayLoading(false);
+      return;
+    }
+    const options = {
+      key: rzpKeyId,
+      amount: rzpAmount,
+      currency: rzpResult?.currency || 'INR',
+      name: 'Northern Trust E-Commerce',
+      description: `Order ${rzpOrderId}`,
+      order_id: rzpOrderId,
+      theme: { color: '#6366f1' },
+      handler: (response) => {
+        console.log('Payment success:', response);
+        setPayDone(true);
+        setPayLoading(false);
+        onRetry?.(); // refresh workflow state
+      },
+      modal: {
+        ondismiss: () => setPayLoading(false),
+      },
+    };
+    const rzp = new window.Razorpay(options);
+    rzp.open();
+    setPayLoading(false);
+  }, [rzpKeyId, rzpAmount, rzpOrderId, rzpResult, onRetry]);
 
   return (
     <div className="task-inspector">
@@ -129,6 +181,30 @@ export function TaskInspector({ task, onClose, onRetry }) {
               <RotateCcw size={14} />
               {retrying ? 'Retrying…' : 'Retry This Task'}
             </button>
+          </div>
+        )}
+
+        {/* Razorpay Pay Now Button */}
+        {isPaymentTask && rzpOrderId && rzpKeyId && (
+          <div className="task-inspector__section">
+            {payDone ? (
+              <div className="task-inspector__pay-success">
+                <CreditCard size={16} />
+                Payment submitted! Workflow will advance shortly.
+              </div>
+            ) : (
+              <button
+                className="btn btn-pay btn-full"
+                onClick={handlePayNow}
+                disabled={payLoading}
+              >
+                <CreditCard size={14} />
+                {payLoading ? 'Opening Razorpay…' : 'Pay Now with Razorpay'}
+              </button>
+            )}
+            <p className="task-inspector__pay-hint">
+              Order: <code>{rzpOrderId}</code>
+            </p>
           </div>
         )}
 
