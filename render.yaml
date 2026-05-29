@@ -1,6 +1,6 @@
 services:
   # 1. Redis instance for Inventory Queue
-  - type: redis
+  - type: keyvalue
     name: nt-redis
     ipAllowList: [] # Private access only
 
@@ -17,11 +17,15 @@ services:
       - key: DATABASE_URL
         sync: false # User will input their Neon DB URL in Render UI
       - key: REDIS_HOST
-        fromRedis: nt-redis
-        type: host
+        fromService:
+          type: keyvalue
+          name: nt-redis
+          property: host
       - key: REDIS_PORT
-        fromRedis: nt-redis
-        type: port
+        fromService:
+          type: keyvalue
+          name: nt-redis
+          property: port
 
   # 3. Payment Service
   - type: web
@@ -91,11 +95,15 @@ services:
       - key: DATABASE_URL
         sync: false
       - key: REDIS_HOST
-        fromRedis: nt-redis
-        type: host
+        fromService:
+          type: keyvalue
+          name: nt-redis
+          property: host
       - key: REDIS_PORT
-        fromRedis: nt-redis
-        type: port
+        fromService:
+          type: keyvalue
+          name: nt-redis
+          property: port
 
   # 7. Frontend Service (served as static site on Render)
   - type: web
