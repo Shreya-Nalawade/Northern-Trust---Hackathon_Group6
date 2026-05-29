@@ -3,6 +3,8 @@ import logging
 import uuid
 import yaml
 import psycopg2.extras
+import os
+import httpx
 from datetime import datetime, timezone
 from enum import Enum
 from typing import Dict, List, Any, Optional, Callable
@@ -376,7 +378,7 @@ class DAGRunner:
             ht = HumanTask(te, self.run_id, self.workflow_name, self.input_payload)
             self.human_tasks[ht.id] = ht
             try:
-                db.save_human_task(ht.id, te.id, ht.status)
+                db.save_human_task(ht.id, te.id, ht.status, workflow_execution_id=self.run_id, task_id=te.task_name)
             except Exception as db_e:
                 logger.error(f"Error saving human task to DB: {db_e}")
             self._emit_event("HUMAN_TASK_CREATED", {
@@ -385,6 +387,11 @@ class DAGRunner:
                 "assignee": ht.assignee,
             })
             self._notify_update()
+
+            # If task-queue is configured, dispatch the human task to BullMQ
+            if os.getenv("TASK_QUEUE_URL"):
+                asyncio.create_task(self._dispatch_human_task_to_queue(ht, te))
+
             return
 
         # HTTP/Redis task — execute
@@ -492,6 +499,33 @@ class DAGRunner:
                 self._sync_task_to_db(te)
                 queue.extend(self.dag.get_downstream_tasks(name))
 
+    async def _dispatch_human_task_to_queue(self, ht: HumanTask, te: TaskExecution):
+        TASK_QUEUE_URL = os.getenv("TASK_QUEUE_URL")
+        url = f"{TASK_QUEUE_URL}/api/v1/tasks/dispatch"
+        body = {
+            "taskExecutionId": ht.id,
+            "workflowExecutionId": self.run_id,
+            "taskId": ht.task_id,
+            "service": "approval-service",
+            "endpoint": "/human-tasks",
+            "method": "POST",
+            "payload": {
+                "task_execution_id": te.id,
+                "workflow_execution_id": self.run_id,
+                "task_id": ht.task_id,
+                "assignee": ht.assignee,
+                "input": self.input_payload
+            }
+        }
+        try:
+            async with httpx.AsyncClient() as client:
+                logger.info(f"Dispatching human task to task-queue: POST {url}")
+                resp = await client.post(url, json=body, timeout=10.0)
+                if resp.status_code not in [200, 202]:
+                    logger.error(f"task-queue rejected human task dispatch: {resp.status_code} - {resp.text}")
+        except Exception as e:
+            logger.error(f"Failed to dispatch human task to task-queue: {e}")
+
     # ─── Control Methods ────────────────────────────────────────────
 
     def pause(self):
@@ -523,7 +557,7 @@ class DAGRunner:
             if ht.status == "PENDING":
                 ht.status = "CANCELLED"
                 try:
-                    db.save_human_task(ht.id, ht.task_execution_id, ht.status)
+                    db.save_human_task(ht.id, ht.task_execution_id, ht.status, workflow_execution_id=self.run_id, task_id=ht.task_id)
                 except Exception as e:
                     logger.error(f"Error terminating human task: {e}")
         self._emit_event("WORKFLOW_CANCELLED", {"workflow": self.workflow_name})
@@ -604,7 +638,7 @@ class DAGRunner:
             te.result_payload = {"approved": True, "decided_by": decided_by or "operator"}
             self._sync_task_to_db(te)
             try:
-                db.save_human_task(ht.id, te.id, ht.status, decided_by or "operator")
+                db.save_human_task(ht.id, te.id, ht.status, decided_by or "operator", workflow_execution_id=self.run_id, task_id=te.task_name)
             except Exception as e:
                 logger.error(f"Error updating human task in DB: {e}")
             self._emit_event("HUMAN_TASK_APPROVED", {
@@ -619,7 +653,7 @@ class DAGRunner:
             te.result_payload = {"rejected": True, "reason": reason}
             self._sync_task_to_db(te)
             try:
-                db.save_human_task(ht.id, te.id, ht.status, reason or "Rejected by operator")
+                db.save_human_task(ht.id, te.id, ht.status, reason or "Rejected by operator", workflow_execution_id=self.run_id, task_id=te.task_name)
             except Exception as e:
                 logger.error(f"Error updating human task in DB: {e}")
             self._emit_event("HUMAN_TASK_REJECTED", {

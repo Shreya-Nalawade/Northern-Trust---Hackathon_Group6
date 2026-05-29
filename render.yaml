@@ -26,6 +26,8 @@ services:
           type: keyvalue
           name: nt-redis
           property: port
+      - key: TASK_QUEUE_URL
+        value: https://nt-task-queue.onrender.com
 
   # 3. Payment Service
   - type: web
@@ -116,3 +118,59 @@ services:
     envVars:
       - key: VITE_API_URL
         value: https://nt-orchestrator.onrender.com/api/v1 # Update with actual deployed orchestrator URL
+
+  # 8. Approval Service
+  - type: web
+    name: nt-approval-service
+    env: docker
+    dockerfilePath: approval_service/Dockerfile
+    plan: free
+    numInstances: 1
+    envVars:
+      - key: PORT
+        value: 3005
+      - key: DATABASE_URL
+        sync: false
+      - key: REDIS_HOST
+        fromService:
+          type: keyvalue
+          name: nt-redis
+          property: host
+      - key: REDIS_PORT
+        fromService:
+          type: keyvalue
+          name: nt-redis
+          property: port
+      - key: ORCHESTRATOR_URL
+        value: https://nt-orchestrator.onrender.com
+
+  # 9. Task Queue Service
+  - type: web
+    name: nt-task-queue
+    env: docker
+    dockerfilePath: task-queue/task-queue-js/Dockerfile
+    plan: free
+    numInstances: 1
+    envVars:
+      - key: PORT
+        value: 4001
+      - key: REDIS_HOST
+        fromService:
+          type: keyvalue
+          name: nt-redis
+          property: host
+      - key: REDIS_PORT
+        fromService:
+          type: keyvalue
+          name: nt-redis
+          property: port
+      - key: ORCHESTRATOR_URL
+        value: https://nt-orchestrator.onrender.com
+      - key: PAYMENT_SERVICE_URL
+        value: https://nt-payment-service.onrender.com
+      - key: SHIPPING_SERVICE_URL
+        value: https://nt-shipping-service.onrender.com
+      - key: NOTIFICATION_SERVICE_URL
+        value: https://nt-notification-service.onrender.com
+      - key: APPROVAL_SERVICE_URL
+        value: https://nt-approval-service.onrender.com

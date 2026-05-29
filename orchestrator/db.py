@@ -189,20 +189,22 @@ def save_task_execution(task_id: str, run_id: str, task_name: str, task_type: st
     finally:
         conn.close()
 
-def save_human_task(ht_id: str, task_exec_id: str, status: str, decision_notes: str = None):
+def save_human_task(ht_id: str, task_exec_id: str, status: str, decision_notes: str = None, workflow_execution_id: str = None, task_id: str = None):
     conn = get_db_connection()
     try:
         with conn.cursor() as cur:
             cur.execute(
                 """
-                INSERT INTO human_tasks (id, task_execution_id, status, decision_notes, created_at)
-                VALUES (%s, %s, %s, %s, NOW())
+                INSERT INTO human_tasks (id, task_execution_id, status, decision_notes, workflow_execution_id, task_id, created_at)
+                VALUES (%s, %s, %s, %s, %s, %s, NOW())
                 ON CONFLICT (id) DO UPDATE SET
                     status = EXCLUDED.status,
                     decision_notes = EXCLUDED.decision_notes,
+                    workflow_execution_id = COALESCE(EXCLUDED.workflow_execution_id, human_tasks.workflow_execution_id),
+                    task_id = COALESCE(EXCLUDED.task_id, human_tasks.task_id),
                     approved_at = CASE WHEN EXCLUDED.status IN ('APPROVED', 'REJECTED') THEN NOW() ELSE human_tasks.approved_at END;
                 """,
-                (ht_id, task_exec_id, status, decision_notes)
+                (ht_id, task_exec_id, status, decision_notes, workflow_execution_id, task_id)
             )
             conn.commit()
     except Exception as e:

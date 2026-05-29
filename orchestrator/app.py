@@ -99,6 +99,13 @@ class TaskCallbackRequest(BaseModel):
     logs: Optional[str] = None
     error: Optional[Any] = None
 
+class TaskQueueResultRequest(BaseModel):
+    taskExecutionId: str
+    workflowExecutionId: str
+    state: str
+    resultPayload: Optional[Dict[str, Any]] = None
+    error: Optional[str] = None
+
 
 # ─── Crash Recovery Logic ───────────────────────────────────────
 
@@ -461,6 +468,24 @@ async def task_callback(req: TaskCallbackRequest):
 
     found_runner._notify_update()
     return {"status": "accepted"}
+
+
+@app.post("/api/v1/internal/task-result")
+async def task_queue_result_callback(req: TaskQueueResultRequest):
+    """Callback endpoint for BullMQ task-queue workers."""
+    db.logger.info(f"Received task-queue callback for task {req.taskExecutionId} with state {req.state}")
+    
+    # Map task-queue result to orchestrator callback request
+    status = "SUCCESS" if req.state == "COMPLETED" else "FAILED"
+    
+    callback_req = TaskCallbackRequest(
+        task_id=req.taskExecutionId,
+        status=status,
+        result=req.resultPayload,
+        error={"message": req.error} if req.error else None
+    )
+    
+    return await task_callback(callback_req)
 
 
 # ─── Human Task Endpoints ───────────────────────────────────────

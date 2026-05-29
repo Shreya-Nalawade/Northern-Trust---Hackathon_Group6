@@ -20,6 +20,7 @@ logger = logging.getLogger(__name__)
 REDIS_HOST = os.getenv("REDIS_HOST", "localhost")
 REDIS_PORT = int(os.getenv("REDIS_PORT", 6379))
 REDIS_QUEUE = os.getenv("REDIS_QUEUE", "queue:inventory:reserve")
+TASK_QUEUE_URL = os.getenv("TASK_QUEUE_URL")
 
 
 async def execute_task(service_name: str, task_name: str, payload: dict) -> dict:
@@ -33,6 +34,65 @@ async def execute_task(service_name: str, task_name: str, payload: dict) -> dict
     items = payload.get("items", [])
 
     logger.info(f"Executing task '{task_name}' for service '{service_name}' (Run: {workflow_execution_id}, Task: {task_execution_id})")
+
+    # If task-queue is configured, dispatch the task via BullMQ queue
+    if TASK_QUEUE_URL and service_name in ["payment-service", "shipping-service", "notification-service"]:
+        url = f"{TASK_QUEUE_URL}/api/v1/tasks/dispatch"
+        endpoint = ""
+        method = "POST"
+        payload_to_send = {}
+
+        if service_name == "payment-service":
+            endpoint = "/api/v1/payment/order"
+            payload_to_send = {
+                "amount": payload.get("amount") or 10000.0,
+                "workflow_execution_id": workflow_execution_id
+            }
+        elif service_name == "shipping-service":
+            endpoint = "/shipping/create-order"
+            payload_to_send = {
+                "workflow_execution_id": workflow_execution_id,
+                "order_id": order_id,
+                "items": items
+            }
+        elif service_name == "notification-service":
+            endpoint = "/notify/email"
+            to_email = payload.get("customer_email") or payload.get("email") or "customer@example.com"
+            customer_name = payload.get("customer_name") or payload.get("customerName") or "Valued Customer"
+            amount = payload.get("amount") or payload.get("total_value") or 10000.0
+            payload_to_send = {
+                "to": to_email,
+                "template": "order_confirmed",
+                "data": {
+                    "orderId": order_id,
+                    "customerName": customer_name,
+                    "total": f"INR {amount}"
+                },
+                "workflow_execution_id": workflow_execution_id
+            }
+
+        async with httpx.AsyncClient() as client:
+            try:
+                body = {
+                    "taskExecutionId": task_execution_id,
+                    "workflowExecutionId": workflow_execution_id,
+                    "taskId": task_name,
+                    "service": service_name,
+                    "endpoint": endpoint,
+                    "method": method,
+                    "payload": payload_to_send
+                }
+                logger.info(f"Dispatching task to task-queue: POST {url} with body={body}")
+                resp = await client.post(url, json=body, timeout=10.0)
+                if resp.status_code in [200, 202]:
+                    return {
+                        "status": "IN_PROGRESS",
+                        "message": "Task queued in BullMQ via task-queue"
+                    }
+                else:
+                    logger.error(f"task-queue rejected task dispatch: {resp.status_code} - {resp.text}")
+            except Exception as e:
+                logger.error(f"Failed to dispatch task to task-queue: {e}")
 
     # 1. Mock order-service tasks (validate-order, cancel-order)
     if service_name == "order-service":

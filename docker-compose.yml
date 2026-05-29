@@ -17,6 +17,7 @@ services:
     environment:
       - REDIS_HOST=redis
       - REDIS_PORT=6379
+      - TASK_QUEUE_URL=http://task-queue:4001
     depends_on:
       - redis
 
@@ -52,6 +53,37 @@ services:
     environment:
       - REDIS_HOST=redis
       - REDIS_PORT=6379
+    depends_on:
+      - redis
+
+  approval-service:
+    build: ./approval_service
+    container_name: nt-approval-service
+    ports:
+      - "3005:3005"
+    environment:
+      - PORT=3005
+      - REDIS_HOST=redis
+      - REDIS_PORT=6379
+      - DATABASE_URL=postgresql://neondb_owner:npg_pbcRHf4a6Xtj@ep-dawn-dust-aoybpkj1-pooler.c-2.ap-southeast-1.aws.neon.tech/neondb?sslmode=require&channel_binding=require
+      - ORCHESTRATOR_URL=http://orchestrator:4000
+    depends_on:
+      - redis
+
+  task-queue:
+    build: ./task-queue/task-queue-js
+    container_name: nt-task-queue
+    ports:
+      - "4001:4001"
+    environment:
+      - TASK_QUEUE_PORT=4001
+      - REDIS_HOST=redis
+      - REDIS_PORT=6379
+      - ORCHESTRATOR_URL=http://orchestrator:4000
+      - PAYMENT_SERVICE_URL=http://payment-service:3001
+      - SHIPPING_SERVICE_URL=http://shipping-service:3002
+      - NOTIFICATION_SERVICE_URL=http://notification-service:3004
+      - APPROVAL_SERVICE_URL=http://approval-service:3005
     depends_on:
       - redis
 
