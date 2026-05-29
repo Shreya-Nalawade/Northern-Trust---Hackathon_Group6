@@ -74,6 +74,7 @@ class TaskExecution:
             "depends_on": self.depends_on,
             "condition": self.condition,
             "trigger": self.trigger,
+            "assignee": self.assignee,
             "input_payload": self.input_payload,
             "result_payload": self.result_payload,
             "error": self.error,
@@ -711,8 +712,21 @@ class DAGRunner:
         }
 
     def to_detail(self) -> dict:
-        """Return the full workflow detail shape (with tasks)."""
+        """Return the full workflow detail shape (with tasks and human_task_ids)."""
+        # Build a reverse lookup: task_execution_id -> human_task_id
+        ht_by_te: dict = {}
+        for ht_id, ht in self.human_tasks.items():
+            ht_by_te[ht.task_execution_id] = ht_id
+
+        tasks = []
+        for te in self.task_executions.values():
+            t = te.to_dict()
+            # Inject human_task_id so frontend can call approve/reject directly
+            if te.state == TaskState.WAITING_HUMAN:
+                t["human_task_id"] = ht_by_te.get(te.id)
+            tasks.append(t)
+
         return {
             **self.to_summary(),
-            "tasks": [te.to_dict() for te in self.task_executions.values()],
+            "tasks": tasks,
         }

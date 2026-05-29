@@ -473,7 +473,9 @@ async def list_human_tasks():
         with conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cur:
             cur.execute(
                 """
-                SELECT ht.id, ht.task_execution_id, ht.workflow_execution_id, wd.name as workflow_name, te.task_id as task_id, ht.status, ht.created_at, we.input_payload
+                SELECT ht.id, ht.task_execution_id, te.workflow_execution_id,
+                       wd.name as workflow_name, te.task_name as task_id,
+                       ht.status, ht.created_at, we.input_payload
                 FROM human_tasks ht
                 JOIN task_executions te ON ht.task_execution_id = te.id
                 JOIN workflow_executions we ON te.workflow_execution_id = we.id

@@ -190,68 +190,102 @@ async def execute_task(service_name: str, task_name: str, payload: dict) -> dict
             try:
                 conn = db.get_db_connection()
                 with conn.cursor() as cursor:
-                    # check availability
-                    stock_available = True
-                    insufficient_items = []
-                    
-                    # Ensure we have default items if none are passed
                     test_items = items if items else [{"sku": "SKU-101", "qty": 1}]
-                    
-                    for item in test_items:
-                        sku = item.get("sku")
-                        qty = item.get("qty", 1)
-                        cursor.execute("SELECT available_quantity FROM inventory_items WHERE sku = %s;", (sku,))
-                        row = cursor.fetchone()
-                        avail = row[0] if row else 0
-                        if not row or avail < qty:
-                            stock_available = False
-                            insufficient_items.append({"sku": sku, "requested": qty, "available": avail})
-                            
-                    if stock_available:
+
+                    # ── check-inventory: READ ONLY — just verify stock ──────────
+                    if task_name == "check-inventory":
+                        stock_ok = True
+                        insufficient = []
                         for item in test_items:
                             sku = item.get("sku")
-                            qty = item.get("qty", 1)
+                            qty = item.get("qty") or item.get("quantity", 1)
                             cursor.execute(
-                                """
-                                UPDATE inventory_items
-                                SET available_quantity = available_quantity - %s,
-                                    reserved_quantity = reserved_quantity + %s,
-                                    updated_at = NOW()
-                                WHERE sku = %s;
-                                """,
-                                (qty, qty, sku)
+                                "SELECT available_quantity FROM inventory_items WHERE sku = %s;",
+                                (sku,)
                             )
-                            cursor.execute(
-                                """
-                                INSERT INTO inventory_reservations (workflow_execution_id, order_id, sku, quantity, reservation_status, created_at)
-                                VALUES (%s, %s, %s, %s, 'RESERVED', NOW());
-                                """,
-                                (workflow_execution_id, order_id, sku, qty)
-                            )
-                        conn.commit()
-                        return {
-                            "status": "SUCCESS",
-                            "result": {
-                                "tracking_id": f"WH-DIRECT-FALLBACK",
-                                "reserved_at": _now()
+                            row = cursor.fetchone()
+                            avail = row[0] if row else 0
+                            if not row or avail < qty:
+                                stock_ok = False
+                                insufficient.append({"sku": sku, "requested": qty, "available": avail})
+
+                        if stock_ok:
+                            return {
+                                "status": "SUCCESS",
+                                "result": {"available": True, "items_checked": len(test_items)}
                             }
-                        }
+                        else:
+                            return {
+                                "status": "FAILED",
+                                "error": f"Insufficient stock: {insufficient}"
+                            }
+
+                    # ── reserve-stock: WRITE — reserve and log to DB ───────────
                     else:
+                        stock_available = True
+                        insufficient_items = []
+
                         for item in test_items:
                             sku = item.get("sku")
-                            qty = item.get("qty", 1)
+                            qty = item.get("qty") or item.get("quantity", 1)
                             cursor.execute(
-                                """
-                                INSERT INTO inventory_reservations (workflow_execution_id, order_id, sku, quantity, reservation_status, created_at)
-                                VALUES (%s, %s, %s, %s, 'FAILED', NOW());
-                                """,
-                                (workflow_execution_id, order_id, sku, qty)
+                                "SELECT available_quantity FROM inventory_items WHERE sku = %s;",
+                                (sku,)
                             )
-                        conn.commit()
-                        return {
-                            "status": "FAILED",
-                            "error": f"Inventory check failed. Insufficient items: {insufficient_items}"
-                        }
+                            row = cursor.fetchone()
+                            avail = row[0] if row else 0
+                            if not row or avail < qty:
+                                stock_available = False
+                                insufficient_items.append({"sku": sku, "requested": qty, "available": avail})
+
+                        if stock_available:
+                            for item in test_items:
+                                sku = item.get("sku")
+                                qty = item.get("qty") or item.get("quantity", 1)
+                                cursor.execute(
+                                    """
+                                    UPDATE inventory_items
+                                    SET available_quantity = available_quantity - %s,
+                                        reserved_quantity = reserved_quantity + %s,
+                                        updated_at = NOW()
+                                    WHERE sku = %s;
+                                    """,
+                                    (qty, qty, sku)
+                                )
+                                cursor.execute(
+                                    """
+                                    INSERT INTO inventory_reservations
+                                        (workflow_execution_id, order_id, sku, quantity, reservation_status, created_at)
+                                    VALUES (%s, %s, %s, %s, 'RESERVED', NOW());
+                                    """,
+                                    (workflow_execution_id, order_id, sku, qty)
+                                )
+                            conn.commit()
+                            return {
+                                "status": "SUCCESS",
+                                "result": {
+                                    "tracking_id": "WH-DIRECT-FALLBACK",
+                                    "reserved_at": _now(),
+                                    "items_reserved": len(test_items)
+                                }
+                            }
+                        else:
+                            for item in test_items:
+                                sku = item.get("sku")
+                                qty = item.get("qty") or item.get("quantity", 1)
+                                cursor.execute(
+                                    """
+                                    INSERT INTO inventory_reservations
+                                        (workflow_execution_id, order_id, sku, quantity, reservation_status, created_at)
+                                    VALUES (%s, %s, %s, %s, 'FAILED', NOW());
+                                    """,
+                                    (workflow_execution_id, order_id, sku, qty)
+                                )
+                            conn.commit()
+                            return {
+                                "status": "FAILED",
+                                "error": f"Inventory reservation failed. Insufficient items: {insufficient_items}"
+                            }
             except Exception as db_err:
                 if conn:
                     conn.rollback()
