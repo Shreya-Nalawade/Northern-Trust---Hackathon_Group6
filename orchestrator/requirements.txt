@@ -1,0 +1,9 @@
+fastapi
+uvicorn[standard]
+httpx
+pyyaml
+pydantic
+python-socketio
+psycopg2-binary
+redis
+python-dotenv
