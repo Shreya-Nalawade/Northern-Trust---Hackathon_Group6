@@ -67,7 +67,7 @@ async def execute_task(service_name: str, task_name: str, payload: dict) -> dict
                 if resp.status_code == 201:
                     data = resp.json()
                     return {
-                        "status": "SUCCESS",
+                        "status": "IN_PROGRESS",
                         "result": data.get("data", data)
                     }
                 else:

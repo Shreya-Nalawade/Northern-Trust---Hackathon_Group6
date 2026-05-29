@@ -430,6 +430,8 @@ class DAGRunner:
                 logger.info(f"Task {task_name} succeeded.")
             elif result.get("status") == "IN_PROGRESS":
                 # For async/callback tasks, we keep the state IN_PROGRESS but do not complete the node yet.
+                te.result_payload = result.get("result", result)
+                self._sync_task_to_db(te)
                 logger.info(f"Task {task_name} is in progress (waiting for callback).")
             else:
                 error_msg = result.get("error", "Unknown error")

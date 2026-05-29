@@ -59,11 +59,51 @@ export function TaskInspector({ task, onClose, onRetry }) {
       description: `Order ${rzpOrderId}`,
       order_id: rzpOrderId,
       theme: { color: '#6366f1' },
-      handler: (response) => {
+      handler: async (response) => {
         console.log('Payment success:', response);
-        setPayDone(true);
-        setPayLoading(false);
-        onRetry?.(); // refresh workflow state
+        setPayLoading(true);
+        try {
+          // 1. Call payment-service verify
+          const verifyResp = await fetch('http://localhost:3001/api/v1/payment/verify', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              razorpay_order_id: response.razorpay_order_id,
+              razorpay_payment_id: response.razorpay_payment_id,
+              razorpay_signature: response.razorpay_signature,
+            }),
+          });
+          const verifyData = await verifyResp.json();
+          if (!verifyResp.ok || !verifyData.success) {
+            throw new Error(verifyData.error || 'Payment signature verification failed');
+          }
+
+          // 2. Call orchestrator task callback
+          const callbackResp = await fetch('http://localhost:4000/api/v1/tasks/callback', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              task_id: task.id,
+              status: 'SUCCESS',
+              result: {
+                payment_id: response.razorpay_payment_id,
+                order_id: response.razorpay_order_id,
+                verified: true
+              }
+            }),
+          });
+          if (!callbackResp.ok) {
+            throw new Error('Failed to notify orchestrator of payment completion');
+          }
+
+          setPayDone(true);
+        } catch (err) {
+          console.error('Payment callback handling failed:', err);
+          alert(err.message || 'Failed to complete payment processing.');
+        } finally {
+          setPayLoading(false);
+          onRetry?.(); // refresh workflow state
+        }
       },
       modal: {
         ondismiss: () => setPayLoading(false),
@@ -72,7 +112,7 @@ export function TaskInspector({ task, onClose, onRetry }) {
     const rzp = new window.Razorpay(options);
     rzp.open();
     setPayLoading(false);
-  }, [rzpKeyId, rzpAmount, rzpOrderId, rzpResult, onRetry]);
+  }, [rzpKeyId, rzpAmount, rzpOrderId, rzpResult, onRetry, task.id]);
 
   return (
     <div className="task-inspector">
@@ -185,7 +225,7 @@ export function TaskInspector({ task, onClose, onRetry }) {
         )}
 
         {/* Razorpay Pay Now Button */}
-        {isPaymentTask && rzpOrderId && rzpKeyId && (
+        {isPaymentTask && rzpOrderId && rzpKeyId && task.state !== 'COMPLETED' && (
           <div className="task-inspector__section">
             {payDone ? (
               <div className="task-inspector__pay-success">
