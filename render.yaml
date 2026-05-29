@@ -1,0 +1,111 @@
+services:
+  # 1. Redis instance for Inventory Queue
+  - type: redis
+    name: nt-redis
+    ipAllowList: [] # Private access only
+
+  # 2. Orchestrator Service
+  - type: web
+    name: nt-orchestrator
+    env: docker
+    dockerfilePath: orchestrator/Dockerfile
+    plan: free
+    numInstances: 1
+    envVars:
+      - key: PORT
+        value: 4000
+      - key: DATABASE_URL
+        sync: false # User will input their Neon DB URL in Render UI
+      - key: REDIS_HOST
+        fromRedis: nt-redis
+        type: host
+      - key: REDIS_PORT
+        fromRedis: nt-redis
+        type: port
+
+  # 3. Payment Service
+  - type: web
+    name: nt-payment-service
+    env: docker
+    dockerfilePath: payment-service/Dockerfile
+    plan: free
+    numInstances: 1
+    envVars:
+      - key: PORT
+        value: 3001
+      - key: DATABASE_URL
+        sync: false
+      - key: RAZORPAY_KEY_ID
+        sync: false
+      - key: RAZORPAY_KEY_SECRET
+        sync: false
+
+  # 4. Shipping Service
+  - type: web
+    name: nt-shipping-service
+    env: docker
+    dockerfilePath: shipping-service/Dockerfile
+    plan: free
+    numInstances: 1
+    envVars:
+      - key: PORT
+        value: 3002
+      - key: DATABASE_URL
+        sync: false
+      - key: SHIPROCKET_EMAIL
+        sync: false
+      - key: SHIPROCKET_PASSWORD
+        sync: false
+      - key: SHIPROCKET_CHANNEL_ID
+        sync: false
+
+  # 5. Notification Service
+  - type: web
+    name: nt-notification-service
+    env: docker
+    dockerfilePath: notification-service/Dockerfile
+    plan: free
+    numInstances: 1
+    envVars:
+      - key: PORT
+        value: 3004
+      - key: DATABASE_URL
+        sync: false
+      - key: TWILIO_ACCOUNT_SID
+        sync: false
+      - key: TWILIO_AUTH_TOKEN
+        sync: false
+      - key: TWILIO_FROM_NUMBER
+        sync: false
+      - key: SENDGRID_API_KEY
+        sync: false
+
+  # 6. Inventory Service Python Worker
+  - type: worker
+    name: nt-inventory-service
+    env: docker
+    dockerfilePath: inventory-service/Dockerfile
+    plan: free
+    numInstances: 1
+    envVars:
+      - key: DATABASE_URL
+        sync: false
+      - key: REDIS_HOST
+        fromRedis: nt-redis
+        type: host
+      - key: REDIS_PORT
+        fromRedis: nt-redis
+        type: port
+
+  # 7. Frontend Service (served as static site on Render)
+  - type: web
+    name: nt-frontend
+    env: static
+    buildCommand: npm run build
+    publishDir: dist
+    staticPublishPath: dist
+    plan: free
+    rootDir: frontend
+    envVars:
+      - key: VITE_API_URL
+        value: https://nt-orchestrator.onrender.com/api/v1 # Update with actual deployed orchestrator URL
