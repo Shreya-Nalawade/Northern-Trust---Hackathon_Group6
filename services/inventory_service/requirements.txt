@@ -1,6 +1,0 @@
-redis
-pymongo
-httpx
-pydantic
-
-
