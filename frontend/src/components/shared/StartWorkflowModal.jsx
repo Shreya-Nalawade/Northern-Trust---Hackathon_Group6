@@ -22,7 +22,13 @@ export function StartWorkflowModal({ isOpen, onClose, onSuccess }) {
         order_id: orderId || `ORD-${Date.now().toString(36).toUpperCase()}`,
         customer_id: customerId || `CUST-${Math.floor(Math.random() * 999).toString().padStart(3, '0')}`,
         total_value: parseFloat(totalValue) || 150,
-        items: items ? items.split(',').map((s) => s.trim()) : ['Widget A'],
+        items: items
+          ? items.split(',').map((s) => {
+              const [name, qty] = s.trim().split(':');
+              const sku = name.trim().startsWith('SKU-') ? name.trim() : 'SKU-101';
+              return { sku, quantity: parseInt(qty, 10) || 1 };
+            })
+          : [{ sku: 'SKU-101', quantity: 1 }],
       },
     };
 
@@ -95,13 +101,14 @@ export function StartWorkflowModal({ isOpen, onClose, onSuccess }) {
         </div>
 
         <div className="form-group">
-          <label className="form-label">Items (comma-separated)</label>
+          <label className="form-label">Items (SKU:qty, comma-separated)</label>
           <input
             className="form-input"
-            placeholder="e.g. Widget A, Widget B"
+            placeholder="e.g. SKU-101:2, SKU-102:1"
             value={items}
             onChange={(e) => setItems(e.target.value)}
           />
+          <p className="form-hint">Leave blank to use default SKU-101 qty=1</p>
         </div>
 
         {error && (

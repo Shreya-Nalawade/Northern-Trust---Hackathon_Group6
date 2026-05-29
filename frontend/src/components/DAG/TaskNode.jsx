@@ -59,7 +59,7 @@ function TaskNodeComponent({ data, selected }) {
           <div className="task-node__service">{data.service}</div>
         )}
 
-        {data.type === 'human' && data.state !== 'SKIPPED' && (
+        {data.type === 'human' && data.state === 'WAITING_HUMAN' && (
           <div className="task-node__human-badge">
             <User size={10} /> Requires Approval
           </div>

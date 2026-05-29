@@ -1,6 +1,8 @@
 import asyncio
 import logging
 import uuid
+import yaml
+import psycopg2.extras
 from datetime import datetime, timezone
 from enum import Enum
 from typing import Dict, List, Any, Optional, Callable
@@ -47,7 +49,7 @@ def _now() -> str:
 
 
 def _make_task_id() -> str:
-    return f"task-{uuid.uuid4().hex[:8]}"
+    return str(uuid.uuid4())
 
 
 class TaskExecution:
@@ -81,6 +83,7 @@ class TaskExecution:
             "depends_on": self.depends_on,
             "condition": self.condition,
             "trigger": self.trigger,
+            "assignee": self.assignee,
             "input_payload": self.input_payload,
             "result_payload": self.result_payload,
             "error": self.error,
@@ -95,7 +98,7 @@ class HumanTask:
     """Represents a human-in-the-loop approval task."""
 
     def __init__(self, task_exec: TaskExecution, workflow_id: str, workflow_name: str, input_payload: dict):
-        self.id: str = f"ht-{uuid.uuid4().hex[:8]}"
+        self.id: str = str(uuid.uuid4())
         self.task_execution_id: str = task_exec.id
         self.workflow_execution_id: str = workflow_id
         self.workflow_name: str = workflow_name
@@ -166,6 +169,54 @@ class DAGRunner:
         # Callback for real-time updates (Socket.IO)
         self._on_update = on_update
 
+        # Persist initial state to DB
+        try:
+            definition_yaml = yaml.dump(definition)
+            self.definition_id = db.get_or_create_workflow_definition(self.workflow_name, definition_yaml)
+            
+            order_id = self.input_payload.get("order_id") or self.input_payload.get("orderId")
+            customer_id = self.input_payload.get("customer_id") or self.input_payload.get("customerId")
+            
+            db.save_workflow_execution(
+                run_id=self.run_id,
+                definition_id=self.definition_id,
+                state=self.status.value,
+                order_id=order_id,
+                customer_id=customer_id,
+                input_payload=self.input_payload
+            )
+            
+            for te in self.task_executions.values():
+                self._sync_task_to_db(te)
+        except Exception as e:
+            logger.error(f"Error persisting initial DAGRunner state to DB: {e}")
+
+    def _sync_task_to_db(self, te: TaskExecution):
+        try:
+            db.save_task_execution(
+                task_id=te.id,
+                run_id=self.run_id,
+                task_name=te.task_id,
+                task_type=te.type,
+                service_name=te.service,
+                state=te.state.value,
+                retry_count=te.attempt_number,
+                input_payload=te.input_payload,
+                result_payload=te.result_payload,
+                error_message=te.error,
+                started_at=te.dispatched_at,
+                completed_at=te.completed_at
+            )
+        except Exception as e:
+            logger.error(f"Error syncing task {te.task_id} to DB: {e}")
+
+    def _set_status(self, status: WorkflowStatus, error_message: Optional[str] = None):
+        self.status = status
+        try:
+            db.update_workflow_state(self.run_id, status.value, error_message)
+        except Exception as e:
+            logger.error(f"Error updating workflow status in DB: {e}")
+
     def _build_task_input(self, task_name: str) -> Optional[dict]:
         """Build task-specific input from workflow input."""
         ip = self.input_payload
@@ -181,8 +232,9 @@ class DAGRunner:
         return task_inputs.get(task_name, {"order_id": ip.get("order_id")})
 
     def _emit_event(self, event_type: str, payload: Optional[dict] = None):
+        event_id = str(uuid.uuid4())
         event = {
-            "id": f"evt-{uuid.uuid4().hex[:8]}",
+            "id": event_id,
             "event_type": event_type,
             "payload": payload or {},
             "created_at": _now(),
@@ -194,6 +246,27 @@ class DAGRunner:
         _fire_db(StateManager.log_event, self.run_id, event_type, message_str)
         
         logger.info(f"[{self.run_id}] Event: {event_type} {payload or ''}")
+
+        # Find corresponding task_execution_id if applicable
+        task_exec_id = None
+        if payload and "task_id" in payload:
+            task_name = payload["task_id"]
+            te = self.task_executions.get(task_name)
+            if te:
+                task_exec_id = te.id
+
+        # Persist to database
+        try:
+            db.save_workflow_event(
+                event_id=event_id,
+                run_id=self.run_id,
+                task_exec_id=task_exec_id,
+                event_type=event_type,
+                message=f"Event {event_type} emitted for workflow {self.workflow_name}",
+                payload=payload
+            )
+        except Exception as e:
+            logger.error(f"Error persisting workflow event to DB: {e}")
 
     def _notify_update(self):
         """Send a state patch via the callback (for Socket.IO)."""
@@ -323,6 +396,7 @@ class DAGRunner:
         if not self._check_condition(te):
             self._update_task_state(task_name, TaskState.SKIPPED)
             te.completed_at = _now()
+            self._sync_task_to_db(te)
             self._emit_event("TASK_SKIPPED", {
                 "task_id": task_name,
                 "reason": f"Condition not met: {te.condition}",
@@ -334,8 +408,13 @@ class DAGRunner:
         if te.type == "human":
             self._update_task_state(task_name, TaskState.WAITING_HUMAN)
             te.dispatched_at = _now()
+            self._sync_task_to_db(te)
             ht = HumanTask(te, self.run_id, self.workflow_name, self.input_payload)
             self.human_tasks[ht.id] = ht
+            try:
+                db.save_human_task(ht.id, te.id, ht.status)
+            except Exception as db_e:
+                logger.error(f"Error saving human task to DB: {db_e}")
             self._emit_event("HUMAN_TASK_CREATED", {
                 "task_id": task_name,
                 "human_task_id": ht.id,
@@ -348,6 +427,7 @@ class DAGRunner:
         self._update_task_state(task_name, TaskState.IN_PROGRESS)
         te.dispatched_at = _now()
         te.attempt_number += 1
+        self._sync_task_to_db(te)
 
         attempt = {
             "number": te.attempt_number,
@@ -363,12 +443,20 @@ class DAGRunner:
         logger.info(f"Executing task: {task_name} via {service}")
 
         try:
-            result = await execute_task(service, task_name, te.input_payload)
+            # We inject run_id and full inputs for real integrations
+            input_data = {
+                **(te.input_payload or {}),
+                "workflow_execution_id": self.run_id,
+                "task_execution_id": te.id,
+                "items": self.input_payload.get("items", [])
+            }
+            result = await execute_task(service, task_name, input_data)
 
             if result.get("status") == "SUCCESS":
                 self._update_task_state(task_name, TaskState.COMPLETED)
                 te.result_payload = result.get("result", result)
                 te.completed_at = _now()
+                self._sync_task_to_db(te)
                 attempt["state"] = "COMPLETED"
                 attempt["completed_at"] = _now()
                 self._emit_event("TASK_COMPLETED", {
@@ -376,11 +464,17 @@ class DAGRunner:
                     **(te.result_payload if isinstance(te.result_payload, dict) else {}),
                 })
                 logger.info(f"Task {task_name} succeeded.")
+            elif result.get("status") == "IN_PROGRESS":
+                # For async/callback tasks, we keep the state IN_PROGRESS but do not complete the node yet.
+                te.result_payload = result.get("result", result)
+                self._sync_task_to_db(te)
+                logger.info(f"Task {task_name} is in progress (waiting for callback).")
             else:
                 error_msg = result.get("error", "Unknown error")
                 self._update_task_state(task_name, TaskState.FAILED, error_msg)
                 te.result_payload = {"error": error_msg}
                 te.completed_at = _now()
+                self._sync_task_to_db(te)
                 attempt["state"] = "FAILED"
                 attempt["completed_at"] = _now()
                 attempt["error"] = error_msg
@@ -394,6 +488,7 @@ class DAGRunner:
             error_msg = str(e)
             self._update_task_state(task_name, TaskState.FAILED, error_msg)
             te.completed_at = _now()
+            self._sync_task_to_db(te)
             attempt["state"] = "FAILED"
             attempt["completed_at"] = _now()
             attempt["error"] = error_msg
@@ -428,6 +523,7 @@ class DAGRunner:
             if te and te.state == TaskState.PENDING:
                 self._update_task_state(name, TaskState.CANCELLED)
                 te.completed_at = _now()
+                self._sync_task_to_db(te)
                 queue.extend(self.dag.get_downstream_tasks(name))
 
     # ─── Control Methods ────────────────────────────────────────────
@@ -455,10 +551,15 @@ class DAGRunner:
             if te.state in (TaskState.PENDING, TaskState.WAITING_HUMAN):
                 self._update_task_state(te.task_id, TaskState.CANCELLED)
                 te.completed_at = _now()
+                self._sync_task_to_db(te)
         # Remove pending human tasks
         for ht_id, ht in list(self.human_tasks.items()):
             if ht.status == "PENDING":
                 ht.status = "CANCELLED"
+                try:
+                    db.save_human_task(ht.id, ht.task_execution_id, ht.status)
+                except Exception as e:
+                    logger.error(f"Error terminating human task: {e}")
         self._emit_event("WORKFLOW_CANCELLED", {"workflow": self.workflow_name})
         self._notify_update()
         logger.info(f"Workflow {self.run_id} terminated.")
@@ -480,6 +581,7 @@ class DAGRunner:
         self._update_task_state(te.task_id, TaskState.PENDING)
         te.result_payload = None
         te.completed_at = None
+        self._sync_task_to_db(te)
 
         # Un-cancel downstream tasks
         self._uncancel_downstream(te.task_id)
@@ -515,6 +617,7 @@ class DAGRunner:
             if te and te.state == TaskState.CANCELLED:
                 self._update_task_state(name, TaskState.PENDING)
                 te.completed_at = None
+                self._sync_task_to_db(te)
                 queue.extend(self.dag.get_downstream_tasks(name))
 
     def resolve_human_task(self, human_task_id: str, approved: bool, decided_by: str = None, reason: str = None) -> bool:
@@ -532,6 +635,11 @@ class DAGRunner:
             self._update_task_state(te.task_id, TaskState.COMPLETED)
             te.completed_at = _now()
             te.result_payload = {"approved": True, "decided_by": decided_by or "operator"}
+            self._sync_task_to_db(te)
+            try:
+                db.save_human_task(ht.id, te.id, ht.status, decided_by or "operator")
+            except Exception as e:
+                logger.error(f"Error updating human task in DB: {e}")
             self._emit_event("HUMAN_TASK_APPROVED", {
                 "task_id": te.task_id,
                 "decided_by": decided_by or "operator",
@@ -541,6 +649,11 @@ class DAGRunner:
             self._update_task_state(te.task_id, TaskState.FAILED, reason or "Rejected by operator")
             te.completed_at = _now()
             te.result_payload = {"rejected": True, "reason": reason}
+            self._sync_task_to_db(te)
+            try:
+                db.save_human_task(ht.id, te.id, ht.status, reason or "Rejected by operator")
+            except Exception as e:
+                logger.error(f"Error updating human task in DB: {e}")
             self._emit_event("HUMAN_TASK_REJECTED", {
                 "task_id": te.task_id,
                 "reason": reason or "Rejected by operator",
@@ -549,6 +662,75 @@ class DAGRunner:
 
         self._notify_update()
         return True
+
+    def load_state_from_db(self):
+        """Restore all runner task executions, human tasks, and events from the database."""
+        conn = db.get_db_connection()
+        try:
+            with conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cur:
+                # 1. Load workflow execution status
+                cur.execute("SELECT workflow_state, started_at, completed_at FROM workflow_executions WHERE id = %s;", (self.run_id,))
+                row = cur.fetchone()
+                if row:
+                    self.status = WorkflowStatus(row["workflow_state"])
+                    self.started_at = row["started_at"].isoformat() if row["started_at"] else None
+                    self.completed_at = row["completed_at"].isoformat() if row["completed_at"] else None
+
+                # 2. Load task executions
+                cur.execute("SELECT id, task_id, task_state, retry_count, input_payload, result_payload, error_message, started_at, completed_at FROM task_executions WHERE workflow_execution_id = %s;", (self.run_id,))
+                tasks = cur.fetchall()
+                for t in tasks:
+                    t_name = t["task_id"]
+                    if t_name in self.task_executions:
+                        te = self.task_executions[t_name]
+                        te.id = str(t["id"])
+                        te.state = TaskState(t["task_state"])
+                        te.attempt_number = t["retry_count"] or 0
+                        te.input_payload = t["input_payload"]
+                        te.result_payload = t["result_payload"]
+                        te.error = t["error_message"]
+                        te.dispatched_at = t["started_at"].isoformat() if t["started_at"] else None
+                        te.completed_at = t["completed_at"].isoformat() if t["completed_at"] else None
+
+                # 3. Load human tasks
+                cur.execute(
+                    """
+                    SELECT ht.id, ht.task_execution_id, ht.status, ht.created_at, te.task_id as task_name
+                    FROM human_tasks ht
+                    JOIN task_executions te ON ht.task_execution_id = te.id
+                    WHERE te.workflow_execution_id = %s;
+                    """,
+                    (self.run_id,)
+                )
+                hts = cur.fetchall()
+                for ht_row in hts:
+                    task_exec = None
+                    for te in self.task_executions.values():
+                        if te.id == str(ht_row["task_execution_id"]):
+                            task_exec = te
+                            break
+                    if task_exec:
+                        ht = HumanTask(task_exec, self.run_id, self.workflow_name, self.input_payload)
+                        ht.id = str(ht_row["id"])
+                        ht.status = ht_row["status"]
+                        ht.created_at = ht_row["created_at"].isoformat() if ht_row["created_at"] else _now()
+                        self.human_tasks[ht.id] = ht
+
+                # 4. Load events
+                cur.execute("SELECT id, event_type, event_payload, created_at FROM workflow_events WHERE workflow_execution_id = %s ORDER BY created_at ASC;", (self.run_id,))
+                evs = cur.fetchall()
+                self.events = []
+                for ev in evs:
+                    self.events.append({
+                        "id": str(ev["id"]),
+                        "event_type": ev["event_type"],
+                        "payload": ev["event_payload"] or {},
+                        "created_at": ev["created_at"].isoformat() if ev["created_at"] else _now()
+                    })
+        except Exception as e:
+            logger.error(f"Error loading state from DB for run {self.run_id}: {e}")
+        finally:
+            conn.close()
 
     # ─── Serialization ──────────────────────────────────────────────
 
@@ -564,7 +746,20 @@ class DAGRunner:
         }
 
     def to_detail(self) -> dict:
-        """Return the full workflow detail shape (with tasks)."""
+        """Return the full workflow detail shape (with tasks and human_task_ids)."""
+        # Build a reverse lookup: task_execution_id -> human_task_id
+        ht_by_te: dict = {}
+        for ht_id, ht in self.human_tasks.items():
+            ht_by_te[ht.task_execution_id] = ht_id
+
+        tasks = []
+        for te in self.task_executions.values():
+            t = te.to_dict()
+            # Inject human_task_id so frontend can call approve/reject directly
+            if te.state == TaskState.WAITING_HUMAN:
+                t["human_task_id"] = ht_by_te.get(te.id)
+            tasks.append(t)
+
         return {
             **self.to_summary(),
             "tasks": [te.to_dict() for te in self.task_executions.values()],
