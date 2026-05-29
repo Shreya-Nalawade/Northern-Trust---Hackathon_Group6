@@ -84,8 +84,8 @@ services:
       - key: SENDGRID_API_KEY
         sync: false
 
-  # 6. Inventory Service Python Worker
-  - type: worker
+  # 6. Inventory Service Python Web Service (Runs worker + health check)
+  - type: web
     name: nt-inventory-service
     env: docker
     dockerfilePath: inventory-service/Dockerfile

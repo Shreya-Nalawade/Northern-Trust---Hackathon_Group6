@@ -3,7 +3,9 @@ import json
 import uuid
 import logging
 import time
+import threading
 from datetime import datetime
+from http.server import HTTPServer, BaseHTTPRequestHandler
 import redis
 import psycopg2
 import httpx
@@ -200,5 +202,27 @@ def start_worker():
             logger.error(f"⚠️ Worker loop encountered an error: {e}")
             time.sleep(2)
 
+class HealthCheckHandler(BaseHTTPRequestHandler):
+    def do_GET(self):
+        self.send_response(200)
+        self.send_header("Content-type", "application/json")
+        self.end_headers()
+        self.wfile.write(b'{"status": "healthy"}')
+
+    def log_message(self, format, *args):
+        # Suppress logging health check requests to keep stdout clean
+        return
+
+def run_health_server():
+    port = int(os.getenv("PORT", "10000"))
+    server = HTTPServer(("0.0.0.0", port), HealthCheckHandler)
+    logger.info(f"🩺 Health check server listening on port {port}")
+    server.serve_forever()
+
 if __name__ == "__main__":
-    start_worker()
+    # Start Redis worker in a background daemon thread
+    worker_thread = threading.Thread(target=start_worker, daemon=True)
+    worker_thread.start()
+    
+    # Run HTTP health check server in main thread to satisfy Render's web service requirement
+    run_health_server()
