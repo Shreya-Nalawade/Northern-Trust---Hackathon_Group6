@@ -102,7 +102,6 @@ services:
     name: nt-frontend
     env: static
     buildCommand: npm run build
-    publishDir: dist
     staticPublishPath: dist
     plan: free
     rootDir: frontend
