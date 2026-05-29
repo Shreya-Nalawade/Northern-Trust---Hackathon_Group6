@@ -14,6 +14,14 @@ from orchestrator.state_manager import StateManager
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
+def _fire_db(func, *args):
+    """Run synchronous DB functions in a threadpool so they don't block the async event loop."""
+    try:
+        loop = asyncio.get_running_loop()
+        loop.run_in_executor(None, func, *args)
+    except Exception as e:
+        logger.error(f"Failed to queue DB operation: {e}")
+
 
 class WorkflowStatus(str, Enum):
     CREATED = "CREATED"
@@ -136,14 +144,14 @@ class DAGRunner:
         self.completed_at: Optional[str] = None
         self.stop_event = asyncio.Event()
 
-        # Neon DB Integration: Create Workflow Run record
-        StateManager.create_workflow_run(self.run_id, self.workflow_name)
+        # Neon DB Integration: Create Workflow Run record (in background thread)
+        _fire_db(StateManager.create_workflow_run, self.run_id, self.workflow_name)
 
         # Rich task tracking
         self.task_executions: Dict[str, TaskExecution] = {}
         for task_name, task_def in self.dag.tasks.items():
             # Neon DB Integration: Create Task record
-            StateManager.create_task(self.run_id, task_name)
+            _fire_db(StateManager.create_task, self.run_id, task_name)
             
             te = TaskExecution(task_name, task_def)
             te.input_payload = self._build_task_input(task_name)
@@ -183,7 +191,7 @@ class DAGRunner:
         
         # Neon DB Integration: Log event
         message_str = json.dumps(payload) if payload else ""
-        StateManager.log_event(self.run_id, event_type, message_str)
+        _fire_db(StateManager.log_event, self.run_id, event_type, message_str)
         
         logger.info(f"[{self.run_id}] Event: {event_type} {payload or ''}")
 
@@ -203,13 +211,13 @@ class DAGRunner:
             te.error = error
             
         # Neon DB Integration: Update Task Status
-        StateManager.update_task_status(self.run_id, task_name, state.value, error)
+        _fire_db(StateManager.update_task_status, self.run_id, task_name, state.value, error)
 
     def _update_workflow_state(self, state: WorkflowStatus, error: str = None):
         """Helper to update state in memory and Neon DB"""
         self.status = state
         # Neon DB Integration: Update Workflow Status
-        StateManager.update_workflow_status(self.run_id, state.value, error)
+        _fire_db(StateManager.update_workflow_status, self.run_id, state.value, error)
 
     def _check_condition(self, task_exec: TaskExecution) -> bool:
         """Evaluate a task's condition against the workflow input."""
