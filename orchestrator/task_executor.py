@@ -190,7 +190,14 @@ async def execute_task(service_name: str, task_name: str, payload: dict) -> dict
             try:
                 conn = db.get_db_connection()
                 with conn.cursor() as cursor:
-                    test_items = items if items else [{"sku": "SKU-101", "qty": 1}]
+                    raw_items = items if items else [{"sku": "SKU-101", "quantity": 1}]
+                    # Normalise: items might be strings (e.g. "Mechanical Keyboard") or dicts
+                    def _normalise(item):
+                        if isinstance(item, dict):
+                            return item
+                        # String item — map to default SKU
+                        return {"sku": "SKU-101", "quantity": 1}
+                    test_items = [_normalise(i) for i in raw_items]
 
                     # ── check-inventory: READ ONLY — just verify stock ──────────
                     if task_name == "check-inventory":
