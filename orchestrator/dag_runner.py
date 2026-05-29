@@ -6,14 +6,23 @@ import psycopg2.extras
 from datetime import datetime, timezone
 from enum import Enum
 from typing import Dict, List, Any, Optional, Callable
+import json
 
-from engine import DAG
-from task_executor import execute_task
-import db
+from orchestrator.engine import DAG
+from orchestrator.task_executor import execute_task
+from orchestrator.state_manager import StateManager
 
 # Setup logging
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
+
+def _fire_db(func, *args):
+    """Run synchronous DB functions in a threadpool so they don't block the async event loop."""
+    try:
+        loop = asyncio.get_running_loop()
+        loop.run_in_executor(None, func, *args)
+    except Exception as e:
+        logger.error(f"Failed to queue DB operation: {e}")
 
 
 class WorkflowStatus(str, Enum):
@@ -138,9 +147,15 @@ class DAGRunner:
         self.completed_at: Optional[str] = None
         self.stop_event = asyncio.Event()
 
+        # Neon DB Integration: Create Workflow Run record (in background thread)
+        _fire_db(StateManager.create_workflow_run, self.run_id, self.workflow_name)
+
         # Rich task tracking
         self.task_executions: Dict[str, TaskExecution] = {}
         for task_name, task_def in self.dag.tasks.items():
+            # Neon DB Integration: Create Task record
+            _fire_db(StateManager.create_task, self.run_id, task_name)
+            
             te = TaskExecution(task_name, task_def)
             te.input_payload = self._build_task_input(task_name)
             self.task_executions[task_name] = te
@@ -225,6 +240,11 @@ class DAGRunner:
             "created_at": _now(),
         }
         self.events.append(event)
+        
+        # Neon DB Integration: Log event
+        message_str = json.dumps(payload) if payload else ""
+        _fire_db(StateManager.log_event, self.run_id, event_type, message_str)
+        
         logger.info(f"[{self.run_id}] Event: {event_type} {payload or ''}")
 
         # Find corresponding task_execution_id if applicable
@@ -256,6 +276,22 @@ class DAGRunner:
             except Exception as e:
                 logger.warning(f"Update callback error: {e}")
 
+    def _update_task_state(self, task_name: str, state: TaskState, error: str = None):
+        """Helper to update state in memory and Neon DB"""
+        te = self.task_executions[task_name]
+        te.state = state
+        if error:
+            te.error = error
+            
+        # Neon DB Integration: Update Task Status
+        _fire_db(StateManager.update_task_status, self.run_id, task_name, state.value, error)
+
+    def _update_workflow_state(self, state: WorkflowStatus, error: str = None):
+        """Helper to update state in memory and Neon DB"""
+        self.status = state
+        # Neon DB Integration: Update Workflow Status
+        _fire_db(StateManager.update_workflow_status, self.run_id, state.value, error)
+
     def _check_condition(self, task_exec: TaskExecution) -> bool:
         """Evaluate a task's condition against the workflow input."""
         condition = task_exec.condition
@@ -272,7 +308,7 @@ class DAGRunner:
     async def run(self):
         """Starts the main execution loop."""
         logger.info(f"Starting workflow run {self.run_id}")
-        self._set_status(WorkflowStatus.RUNNING)
+        self._update_workflow_state(WorkflowStatus.RUNNING)
         self.started_at = _now()
         self._emit_event("WORKFLOW_STARTED", {
             "workflow": self.workflow_name,
@@ -291,7 +327,7 @@ class DAGRunner:
             if not ready_tasks:
                 if self._is_complete():
                     logger.info(f"Workflow {self.run_id} completed successfully.")
-                    self._set_status(WorkflowStatus.COMPLETED)
+                    self._update_workflow_state(WorkflowStatus.COMPLETED)
                     self.completed_at = _now()
                     self._emit_event("WORKFLOW_COMPLETED", {"workflow": self.workflow_name})
                     self._notify_update()
@@ -301,12 +337,12 @@ class DAGRunner:
                 else:
                     if self._has_failed():
                         logger.error(f"Workflow {self.run_id} failed.")
-                        self._set_status(WorkflowStatus.FAILED)
+                        self._update_workflow_state(WorkflowStatus.FAILED, "A task failed")
                         self.completed_at = _now()
                         self._emit_event("WORKFLOW_FAILED", {"workflow": self.workflow_name})
                     else:
                         logger.warning(f"Workflow {self.run_id} is stuck.")
-                        self._set_status(WorkflowStatus.FAILED)
+                        self._update_workflow_state(WorkflowStatus.FAILED, "Workflow is stuck")
                         self.completed_at = _now()
                     self._notify_update()
                     break
@@ -358,7 +394,7 @@ class DAGRunner:
 
         # Check condition — skip if not met
         if not self._check_condition(te):
-            te.state = TaskState.SKIPPED
+            self._update_task_state(task_name, TaskState.SKIPPED)
             te.completed_at = _now()
             self._sync_task_to_db(te)
             self._emit_event("TASK_SKIPPED", {
@@ -370,7 +406,7 @@ class DAGRunner:
 
         # Human task — pause and wait for approval
         if te.type == "human":
-            te.state = TaskState.WAITING_HUMAN
+            self._update_task_state(task_name, TaskState.WAITING_HUMAN)
             te.dispatched_at = _now()
             self._sync_task_to_db(te)
             ht = HumanTask(te, self.run_id, self.workflow_name, self.input_payload)
@@ -387,8 +423,8 @@ class DAGRunner:
             self._notify_update()
             return
 
-        # HTTP/Redis task — execute
-        te.state = TaskState.IN_PROGRESS
+        # HTTP task — execute
+        self._update_task_state(task_name, TaskState.IN_PROGRESS)
         te.dispatched_at = _now()
         te.attempt_number += 1
         self._sync_task_to_db(te)
@@ -417,7 +453,7 @@ class DAGRunner:
             result = await execute_task(service, task_name, input_data)
 
             if result.get("status") == "SUCCESS":
-                te.state = TaskState.COMPLETED
+                self._update_task_state(task_name, TaskState.COMPLETED)
                 te.result_payload = result.get("result", result)
                 te.completed_at = _now()
                 self._sync_task_to_db(te)
@@ -435,8 +471,7 @@ class DAGRunner:
                 logger.info(f"Task {task_name} is in progress (waiting for callback).")
             else:
                 error_msg = result.get("error", "Unknown error")
-                te.state = TaskState.FAILED
-                te.error = error_msg
+                self._update_task_state(task_name, TaskState.FAILED, error_msg)
                 te.result_payload = {"error": error_msg}
                 te.completed_at = _now()
                 self._sync_task_to_db(te)
@@ -451,8 +486,7 @@ class DAGRunner:
 
         except Exception as e:
             error_msg = str(e)
-            te.state = TaskState.FAILED
-            te.error = error_msg
+            self._update_task_state(task_name, TaskState.FAILED, error_msg)
             te.completed_at = _now()
             self._sync_task_to_db(te)
             attempt["state"] = "FAILED"
@@ -487,7 +521,7 @@ class DAGRunner:
             visited.add(name)
             te = self.task_executions.get(name)
             if te and te.state == TaskState.PENDING:
-                te.state = TaskState.CANCELLED
+                self._update_task_state(name, TaskState.CANCELLED)
                 te.completed_at = _now()
                 self._sync_task_to_db(te)
                 queue.extend(self.dag.get_downstream_tasks(name))
@@ -496,14 +530,14 @@ class DAGRunner:
 
     def pause(self):
         if self.status == WorkflowStatus.RUNNING:
-            self._set_status(WorkflowStatus.PAUSED)
+            self._update_workflow_state(WorkflowStatus.PAUSED)
             self._emit_event("WORKFLOW_PAUSED", {"workflow": self.workflow_name})
             self._notify_update()
             logger.info(f"Workflow {self.run_id} paused.")
 
     def resume(self):
         if self.status == WorkflowStatus.PAUSED:
-            self._set_status(WorkflowStatus.RUNNING)
+            self._update_workflow_state(WorkflowStatus.RUNNING)
             self._emit_event("WORKFLOW_RESUMED", {"workflow": self.workflow_name})
             self._notify_update()
             logger.info(f"Workflow {self.run_id} resumed.")
@@ -511,11 +545,11 @@ class DAGRunner:
     def terminate(self):
         """Stop the workflow and cancel all pending tasks."""
         self.stop_event.set()
-        self._set_status(WorkflowStatus.CANCELLED)
+        self._update_workflow_state(WorkflowStatus.CANCELLED)
         self.completed_at = _now()
         for te in self.task_executions.values():
-            if te.state in (TaskState.PENDING, TaskState.WAITING_HUMAN, TaskState.IN_PROGRESS):
-                te.state = TaskState.CANCELLED
+            if te.state in (TaskState.PENDING, TaskState.WAITING_HUMAN):
+                self._update_task_state(te.task_id, TaskState.CANCELLED)
                 te.completed_at = _now()
                 self._sync_task_to_db(te)
         # Remove pending human tasks
@@ -544,8 +578,7 @@ class DAGRunner:
             return False
 
         # Reset task state
-        te.state = TaskState.PENDING
-        te.error = None
+        self._update_task_state(te.task_id, TaskState.PENDING)
         te.result_payload = None
         te.completed_at = None
         self._sync_task_to_db(te)
@@ -555,7 +588,7 @@ class DAGRunner:
 
         # If workflow was failed, set it back to running
         if self.status == WorkflowStatus.FAILED:
-            self._set_status(WorkflowStatus.RUNNING)
+            self._update_workflow_state(WorkflowStatus.RUNNING)
             self.completed_at = None
             self.stop_event.clear()
 
@@ -582,7 +615,7 @@ class DAGRunner:
             visited.add(name)
             te = self.task_executions.get(name)
             if te and te.state == TaskState.CANCELLED:
-                te.state = TaskState.PENDING
+                self._update_task_state(name, TaskState.PENDING)
                 te.completed_at = None
                 self._sync_task_to_db(te)
                 queue.extend(self.dag.get_downstream_tasks(name))
@@ -599,7 +632,7 @@ class DAGRunner:
 
         if approved:
             ht.status = "APPROVED"
-            te.state = TaskState.COMPLETED
+            self._update_task_state(te.task_id, TaskState.COMPLETED)
             te.completed_at = _now()
             te.result_payload = {"approved": True, "decided_by": decided_by or "operator"}
             self._sync_task_to_db(te)
@@ -613,8 +646,7 @@ class DAGRunner:
             })
         else:
             ht.status = "REJECTED"
-            te.state = TaskState.FAILED
-            te.error = reason or "Rejected by operator"
+            self._update_task_state(te.task_id, TaskState.FAILED, reason or "Rejected by operator")
             te.completed_at = _now()
             te.result_payload = {"rejected": True, "reason": reason}
             self._sync_task_to_db(te)
@@ -730,5 +762,5 @@ class DAGRunner:
 
         return {
             **self.to_summary(),
-            "tasks": tasks,
+            "tasks": [te.to_dict() for te in self.task_executions.values()],
         }
