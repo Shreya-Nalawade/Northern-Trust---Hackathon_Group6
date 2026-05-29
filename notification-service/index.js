@@ -5,7 +5,7 @@ const sendgrid = require('@sendgrid/mail');
 const Twilio = require('twilio');
 const emailTemplates = require('./templates/emailTemplates');
 const smsTemplates = require('./templates/smsTemplates');
-const db = require('../common/db');
+const db = require('./common/db');
 
 const PORT = process.env.PORT || 3001;
 
